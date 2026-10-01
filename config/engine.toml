@@ -1,0 +1,8 @@
+[app]
+ffmpeg_path = "/usr/bin/ffmpeg"
+subtitle_provider = "edge"
+
+[ui]
+subtitle_position = "bottom"
+subtitle_display_mode = "sentence"
+subtitle_animation = "none"

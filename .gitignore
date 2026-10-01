@@ -1,0 +1,11 @@
+vendor/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+storage/
+*.mp4
+*.mp3
+*.log
