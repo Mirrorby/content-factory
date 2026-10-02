@@ -117,11 +117,13 @@ import json, sys
 from pathlib import Path
 from app.models.schema import VideoParams
 from app.services import task
+from app.config import config
 
 mode, settings_file, task_id, result_file = sys.argv[1:]
 params = VideoParams(**json.loads(Path(settings_file).read_text()))
 # Публикация в этой версии явно выключена только в текущем процессе.
-task.upload_post.upload_post_service.auto_upload = False
+config.app['upload_post_auto_upload'] = False
+assert task.upload_post.upload_post_service.auto_upload is False
 if mode == 'check':
     print('Параметры MoneyPrinterTurbo проверены.', flush=True)
 else:
