@@ -9,3 +9,6 @@ storage/
 *.mp4
 *.mp3
 *.log
+client_secret*.json
+*youtube-secret*.json
+token.json
