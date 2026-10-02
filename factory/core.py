@@ -113,8 +113,9 @@ def probe(path):
 
 
 WORKER = r'''
-import json, sys
+import json, sys, shutil, uuid
 from pathlib import Path
+from app.utils import utils, file_security
 from app.models.schema import VideoParams
 from app.services import task
 from app.config import config
@@ -127,6 +128,19 @@ assert task.upload_post.upload_post_service.auto_upload is False
 if mode == 'check':
     print('Параметры MoneyPrinterTurbo проверены.', flush=True)
 else:
+    # MPT accepts local materials only inside its dedicated local_videos root.
+    # Keep durable source paths/state unchanged; stage copies for this render.
+    allowed_root = Path(utils.storage_dir("local_videos", create=True)).resolve()
+    render_dir = allowed_root / str(uuid.UUID(task_id))
+    render_dir.mkdir(parents=True, exist_ok=True)
+    for index, material in enumerate(params.video_materials or [], start=1):
+        source = Path(material.url)
+        target = render_dir / f"scene-{index:02}{source.suffix.lower()}"
+        shutil.copyfile(source, target)
+        material.url = file_security.resolve_path_within_directory(
+            str(allowed_root), str(target)
+        )
+    print('Материалы скопированы в папку монтажа.', flush=True)
     result = task.start(task_id, params, stop_at='video')
     if not isinstance(result, dict) or not result.get('videos'):
         raise RuntimeError('MoneyPrinterTurbo не вернул готовый ролик. См. журнал.')
