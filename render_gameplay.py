@@ -36,9 +36,9 @@ def configuration():
     key = os.environ.get('GAMEPLAY_KEY', 'content-factory/assets/leela/gameplay-en-001.mp4')
     if not key.startswith(('assets/leela/', 'content-factory/assets/leela/')) or not key.lower().endswith(('.mp4', '.mov')):
         raise RuntimeError('GAMEPLAY_KEY must be an MP4 or MOV inside assets/leela/ or content-factory/assets/leela/.')
-    return dict(profile='leela-gameplay-v1', source_key=key,
+    return dict(profile='leela-gameplay-v2-full', source_key=key,
                 start=number('CLIP_START', '0', 0, 36000),
-                seconds=number('CLIP_SECONDS', '45', 5, 120),
+                seconds=number('CLIP_SECONDS', '0', 0, 36000),
                 speed=number('GAMEPLAY_SPEED', '2.5', 2, 3),
                 script=SCRIPT, caption=CAPTION, voice='en-US-JennyNeural',
                 engine_commit=core.EXPECTED_COMMIT)
@@ -62,7 +62,8 @@ def prepare_clip(source, target, config):
     duration = float(data['format']['duration'])
     if not math.isfinite(duration) or not any(s.get('codec_type') == 'video' for s in data['streams']):
         raise RuntimeError('Source has no readable video.')
-    length = min(config['seconds'], duration - config['start'])
+    available = duration - config['start']
+    length = min(config['seconds'], available) if config['seconds'] else available
     if length < 5:
         raise RuntimeError('Selected source fragment is shorter than 5 seconds. Adjust CLIP_START.')
     # Preserve the complete phone screen. Never crop game text to fill 9:16.
@@ -78,6 +79,27 @@ def prepare_clip(source, target, config):
             '-movflags', '+faststart', str(target)], stdout=log, stderr=log,
             check=True, timeout=900)
     return length
+
+
+def encode_full(clip, narration, final, subtitle, duration):
+    # Reserve overhead below Telegram's 50 MB cap.
+    bitrate = min(6_000_000, int(44_000_000 * 8 / duration) - 128_000)
+    if bitrate < 100_000:
+        raise RuntimeError('Recording is too long for the Telegram video limit.')
+    # Use a fixed local filename as the filter argument, never user-supplied paths.
+    shutil.copyfile(subtitle, final.parent / 'burn.srt')
+    filters = ("subtitles=burn.srt:force_style='FontName=DejaVu Sans,"
+               "FontSize=20,Outline=2,MarginV=35',"
+               "tpad=stop_mode=clone:stop_duration=" + str(duration))
+    with (final.parent / 'encode.log').open('w') as log:
+        subprocess.run(['ffmpeg', '-nostdin', '-y', '-v', 'error',
+            '-i', str(clip.resolve()), '-i', str(narration.resolve()),
+            '-map', '0:v:0', '-map', '1:a:0', '-vf', filters, '-af', 'apad',
+            '-t', str(duration), '-c:v', 'libx264', '-preset', 'fast',
+            '-crf', '23', '-maxrate', str(bitrate), '-bufsize', str(bitrate * 2),
+            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k',
+            '-movflags', '+faststart', str(final.resolve())],
+            cwd=final.parent, stdout=log, stderr=log, check=True, timeout=3600)
 
 
 def main():
@@ -140,16 +162,23 @@ def main():
         result = core.read_json(job / 'result.json')
         rendered = Path(result['videos'][0])
         final = job / 'final.mp4'
-        # Bound bitrate for Telegram delivery; narration stays at normal speed.
-        with (job / 'encode.log').open('w') as log:
-            subprocess.run(['ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', str(rendered),
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-maxrate', '6M',
-                '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k',
-                '-movflags', '+faststart', str(final)], stdout=log, stderr=log, check=True, timeout=900)
-        info = core.probe(final)
         subtitle = Path(result.get('subtitle_path') or '')
         if not subtitle.is_file() or not subtitle.stat().st_size:
             raise RuntimeError('Missing generated subtitles.')
+        # MPT renders only as long as narration. Use its audio/subtitles but
+        # assemble from the COMPLETE accelerated gameplay instead of that cut.
+        narration = core.probe(rendered)['duration']
+        gameplay_duration = length / config['speed']
+        output_duration = max(gameplay_duration, narration)
+        core_path = job / 'subtitle.srt'
+        shutil.copyfile(subtitle, core_path)
+        encode_full(clip, rendered, final, core_path, output_duration)
+        info = core.probe(final)
+        if abs(info['duration'] - output_duration) > 0.25:
+            raise RuntimeError('Output duration does not cover the complete selected recording.')
+        subtitle = core_path
+        state.update(source_seconds=length, gameplay_seconds=gameplay_duration)
+        print(f'Complete source: {length:.2f}s; accelerated: {gameplay_duration:.2f}s; output: {info["duration"]:.2f}s.', flush=True)
         if final.stat().st_size > 50_000_000:
             raise RuntimeError('Result exceeds Telegram delivery size.')
         store.upload_file(final)
