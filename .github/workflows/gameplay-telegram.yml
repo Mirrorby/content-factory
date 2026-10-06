@@ -12,7 +12,7 @@ on:
       gameplay_key:
         description: 'Private R2 object key'
         required: true
-        default: assets/leela/gameplay-en-001.mp4
+        default: content-factory/assets/leela/gameplay-en-001.mp4
         type: string
       clip_start:
         description: 'Start in ORIGINAL recording, seconds'
