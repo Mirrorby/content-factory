@@ -1,0 +1,9 @@
+{
+  "job_id": "leela-actor-001",
+  "model": "veo-3.1-lite-generate-preview",
+  "actor_clips": 2,
+  "seconds_per_clip": 8,
+  "estimated_generation_usd": 0.8,
+  "source_job": "leela-full-001",
+  "purpose": "Requested complete demo: person, question, full game recording, reaction"
+}
