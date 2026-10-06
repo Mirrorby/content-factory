@@ -33,9 +33,9 @@ def number(name, default, low, high):
 
 
 def configuration():
-    key = os.environ.get('GAMEPLAY_KEY', 'assets/leela/gameplay-en-001.mp4')
-    if not key.startswith('assets/leela/') or not key.lower().endswith(('.mp4', '.mov')):
-        raise RuntimeError('GAMEPLAY_KEY must be an MP4 or MOV inside assets/leela/.')
+    key = os.environ.get('GAMEPLAY_KEY', 'content-factory/assets/leela/gameplay-en-001.mp4')
+    if not key.startswith(('assets/leela/', 'content-factory/assets/leela/')) or not key.lower().endswith(('.mp4', '.mov')):
+        raise RuntimeError('GAMEPLAY_KEY must be an MP4 or MOV inside assets/leela/ or content-factory/assets/leela/.')
     return dict(profile='leela-gameplay-v1', source_key=key,
                 start=number('CLIP_START', '0', 0, 36000),
                 seconds=number('CLIP_SECONDS', '45', 5, 120),
