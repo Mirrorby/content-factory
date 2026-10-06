@@ -11,11 +11,12 @@ from factory import core
 
 
 class R2Store:
-    def __init__(self):
+    def __init__(self, require_gemini=True):
         import boto3
         from botocore.config import Config
-        required = ('GEMINI_API_KEY', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID',
-                    'R2_SECRET_ACCESS_KEY', 'R2_BUCKET')
+        required = ('R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET')
+        if require_gemini:
+            required += ('GEMINI_API_KEY',)
         missing = [key for key in required if not os.environ.get(key)]
         if missing:
             raise RuntimeError('Добавь GitHub Secrets: ' + ', '.join(missing))
