@@ -48,6 +48,15 @@ def deliver(store, bucket, prefix, token, chat_id):
         raise Stop('Recipient must be the configured private chat.')
     if chat_id == token.split(':')[0]:
         raise Stop('Use your personal chat ID, not the bot ID.')
+    try:
+        spec = json.loads(store.get_object(Bucket=bucket, Key=prefix + 'spec.json')['Body'].read())
+    except ClientError as exc:
+        if exc.response['Error']['Code'] not in ('404', 'NoSuchKey'):
+            raise
+        spec = {}
+    caption = spec.get('caption', 'Иногда перед нами несколько путей. Что для тебя сейчас действительно важно?\n\nИзображения созданы с помощью ИИ.')
+    if not isinstance(caption, str) or len(caption.encode('utf-16-le')) // 2 > 1024:
+        raise Stop('Caption is invalid or exceeds Telegram limit.')
     source = prefix + 'final.mp4'
     head = store.head_object(Bucket=bucket, Key=source)
     if not 0 < head.get('ContentLength', 0) <= 50_000_000:
@@ -60,8 +69,7 @@ def deliver(store, bucket, prefix, token, chat_id):
         state = {'status': 'sending', 'chat_id': chat_id, 'bot_id': token.split(':')[0],
                  'source': source, 'run_id': os.environ.get('GITHUB_RUN_ID')}
         save(state, IfNoneMatch='*')
-        caption = ('Иногда перед нами несколько путей. Что для тебя сейчас действительно важно?'
-                   '\n\nИзображения созданы с помощью ИИ.')
+
         print('Sending existing video to your configured private chat.', flush=True)
         with video.open('rb') as media:
             result = api('sendVideo', data={'chat_id': chat_id, 'caption': caption},
@@ -106,3 +114,4 @@ if __name__ == '__main__':
         # requests exceptions include the bot token in the URL: never print them.
         print(f'Stopped ({type(exc).__name__}). Check Telegram and saved R2 state before retrying.', flush=True)
         sys.exit(1)
+
