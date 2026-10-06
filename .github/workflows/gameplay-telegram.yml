@@ -1,12 +1,15 @@
 name: Generate Leela gameplay and send to Telegram
 
 on:
+  push:
+    branches: [main]
+    paths: ['requests/leela-full-001.json']
   workflow_dispatch:
     inputs:
       job_id:
         description: 'Same ID reuses result; change ID for different settings'
         required: true
-        default: leela-gameplay-001
+        default: leela-full-001
         type: string
 
       gameplay_key:
@@ -20,9 +23,9 @@ on:
         default: '0'
         type: string
       clip_seconds:
-        description: 'Length in ORIGINAL recording, seconds (5-120)'
+        description: 'Source seconds; 0 uses the entire recording'
         required: true
-        default: '45'
+        default: '0'
         type: string
       speed:
         description: 'Gameplay speed'
@@ -46,13 +49,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:
-      JOB_ID: ${{ inputs.job_id }}
+      JOB_ID: ${{ inputs.job_id || 'leela-full-001' }}
       ENGINE_DIR: ${{ github.workspace }}/vendor/MoneyPrinterTurbo
       PYTHONUNBUFFERED: '1'
-      GAMEPLAY_KEY: ${{ inputs.gameplay_key }}
-      CLIP_START: ${{ inputs.clip_start }}
-      CLIP_SECONDS: ${{ inputs.clip_seconds }}
-      GAMEPLAY_SPEED: ${{ inputs.speed }}
+      GAMEPLAY_KEY: ${{ inputs.gameplay_key || 'content-factory/assets/leela/gameplay-en-001.mp4' }}
+      CLIP_START: ${{ inputs.clip_start || '0' }}
+      CLIP_SECONDS: ${{ inputs.clip_seconds || '0' }}
+      GAMEPLAY_SPEED: ${{ inputs.speed || '2.5' }}
     steps:
       - uses: actions/checkout@v4
         with:
