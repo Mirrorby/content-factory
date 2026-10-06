@@ -1,0 +1,118 @@
+name: Generate Leela gameplay and send to Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: 'Same ID reuses result; change ID for different settings'
+        required: true
+        default: leela-gameplay-001
+        type: string
+
+      gameplay_key:
+        description: 'Private R2 object key'
+        required: true
+        default: assets/leela/gameplay-en-001.mp4
+        type: string
+      clip_start:
+        description: 'Start in ORIGINAL recording, seconds'
+        required: true
+        default: '0'
+        type: string
+      clip_seconds:
+        description: 'Length in ORIGINAL recording, seconds (5-120)'
+        required: true
+        default: '45'
+        type: string
+      speed:
+        description: 'Gameplay speed'
+        required: true
+        default: '2.5'
+        type: choice
+        options:
+          - '2'
+          - '2.5'
+          - '3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: content-factory-generator
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      JOB_ID: ${{ inputs.job_id }}
+      ENGINE_DIR: ${{ github.workspace }}/vendor/MoneyPrinterTurbo
+      PYTHONUNBUFFERED: '1'
+      GAMEPLAY_KEY: ${{ inputs.gameplay_key }}
+      CLIP_START: ${{ inputs.clip_start }}
+      CLIP_SECONDS: ${{ inputs.clip_seconds }}
+      GAMEPLAY_SPEED: ${{ inputs.speed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check settings
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          names = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID', 'R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET']
+          missing = [x for x in names if not os.environ.get(x)]
+          if missing:
+              raise SystemExit('Add repository secrets: ' + ', '.join(missing))
+          if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}', os.environ['JOB_ID']):
+              raise SystemExit('Invalid job_id')
+          PY
+
+      - uses: actions/checkout@v4
+        with:
+          repository: harry0703/MoneyPrinterTurbo
+          ref: 8e259e9f072c9e08464f040cd658d4eb046a57d0
+          path: vendor/MoneyPrinterTurbo
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          enable-cache: true
+          cache-dependency-glob: vendor/MoneyPrinterTurbo/uv.lock
+
+      - name: Install runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
+          uv sync --project "$ENGINE_DIR" --frozen --no-dev --python 3.11
+          uv pip install --python "$ENGINE_DIR/.venv/bin/python" 'boto3==1.40.45'
+          cp config/engine.toml "$ENGINE_DIR/config.toml"
+          cp /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf "$ENGINE_DIR/resource/fonts/"
+
+      - name: Generate and save to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: '"$ENGINE_DIR/.venv/bin/python" render_gameplay.py'
+
+      - name: Send ready video to Telegram
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: '"$ENGINE_DIR/.venv/bin/python" send_telegram.py'
