@@ -88,9 +88,7 @@ def edit(job, person, gameplay, voice):
     (job / 'cta.txt').write_text('What would\nyou ask?')
     normal = ('scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,'
               'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0xf5eedf,setsar=1,fps=30')
-    label = (',drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf:'
-             'text=AI actor - demonstration:fontsize=23:fontcolor=white:'
-             'box=1:boxcolor=black@0.4:x=40:y=65')
+    label = ''
     parts = [
         (person, 0, 3, normal + label + card('hook.txt', 1200, 0, 3)),
         (gameplay, 0, game_length, f'setpts=(PTS-STARTPTS)/{SPEED},' + normal +
@@ -130,7 +128,7 @@ def main():
     job.mkdir(parents=True, exist_ok=True)
     spec = dict(version=1, model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='en-US-JennyNeural',
-        caption='What would you ask Leela?\n\nAI actor in a staged demonstration; real gameplay. #Leela #SelfReflection')
+        caption='Find us on Telegram: @leela-ru-bot')
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
