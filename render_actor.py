@@ -171,7 +171,7 @@ def main():
     job.mkdir(parents=True, exist_ok=True)
     key = os.environ['GEMINI_API_KEY'].strip()
     spec = dict(model=MODEL, prompts=PROMPTS, source=GAMEPLAY, seconds_per_clip=8, max_requests=2,
-                caption='Find us on Telegram: @leela-ru-bot')
+                caption='Find on Telegram: @leela_ru_bot')
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
