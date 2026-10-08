@@ -22,7 +22,7 @@ SCRIPT = (
     'Take a moment to notice what resonates with you. '
     'Try Leela with your own question.'
 )
-CAPTION = 'What question would you bring to Leela? Try it with your own question. #Leela #SelfReflection'
+CAPTION = 'Find us on Telegram: @leela-ru-bot'
 
 
 def number(name, default, low, high):
