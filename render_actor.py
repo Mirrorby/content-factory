@@ -142,9 +142,7 @@ def assemble(job, sources):
             line = INTRO_LINE if index == 0 else OUTRO_LINE
             (job / 'line.txt').write_text('\n'.join(textwrap.wrap(line, width=36)), encoding='utf-8')
             filters += (f",drawtext=fontfile={font}:textfile=line.txt:fontcolor=white:fontsize=38:"
-                        'borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-260:line_spacing=10,'
-                        f'drawtext=fontfile={font}:text=AI actor - demonstration:fontcolor=white:'
-                        'fontsize=24:box=1:boxcolor=black@0.5:x=40:y=70')
+                        'borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-260:line_spacing=10')
         target = job / f'part-{index}.mp4'
         with (job / 'assembly.log').open('a') as log:
             subprocess.run(['ffmpeg', '-nostdin', '-y', '-v', 'error', '-i', str(source.resolve()),
@@ -173,7 +171,7 @@ def main():
     job.mkdir(parents=True, exist_ok=True)
     key = os.environ['GEMINI_API_KEY'].strip()
     spec = dict(model=MODEL, prompts=PROMPTS, source=GAMEPLAY, seconds_per_clip=8, max_requests=2,
-                caption='Leela: what question would you bring?\n\nStaged demonstration with an AI-generated actor; real gameplay recording. #Leela #SelfReflection')
+                caption='Find us on Telegram: @leela-ru-bot')
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
