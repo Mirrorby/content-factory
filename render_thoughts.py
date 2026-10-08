@@ -128,7 +128,7 @@ def main():
     job.mkdir(parents=True, exist_ok=True)
     spec = dict(version=1, model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='en-US-JennyNeural',
-        caption='Find us on Telegram: @leela-ru-bot')
+        caption='Find on Telegram: @leela_ru_bot')
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
