@@ -48,13 +48,7 @@ def deliver(store, bucket, prefix, token, chat_id):
         raise Stop('Recipient must be the configured private chat.')
     if chat_id == token.split(':')[0]:
         raise Stop('Use your personal chat ID, not the bot ID.')
-    try:
-        spec = json.loads(store.get_object(Bucket=bucket, Key=prefix + 'spec.json')['Body'].read())
-    except ClientError as exc:
-        if exc.response['Error']['Code'] not in ('404', 'NoSuchKey'):
-            raise
-        spec = {}
-    caption = spec.get('caption', 'Иногда перед нами несколько путей. Что для тебя сейчас действительно важно?\n\nИзображения созданы с помощью ИИ.')
+    caption = 'Find us on Telegram: @leela-ru-bot'
     if not isinstance(caption, str) or len(caption.encode('utf-16-le')) // 2 > 1024:
         raise Stop('Caption is invalid or exceeds Telegram limit.')
     source = prefix + 'final.mp4'
