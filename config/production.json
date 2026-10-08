@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "caption": "Find on Telegram: @leela_ru_bot",
+  "cycle_hours": 96,
+  "queue_target": 10,
+  "max_new_per_cycle": 10,
+  "source": "content-factory/assets/leela/gameplay-en-001.mp4",
+  "speed": 2.5,
+  "posting_times": [
+    "09:00",
+    "19:00"
+  ],
+  "posting_timezone": null,
+  "public_bucket_env": "BUFFER_MEDIA_BUCKET",
+  "public_base_url_env": "BUFFER_MEDIA_BASE_URL",
+  "characters": [
+    {
+      "id": "maya",
+      "name": "Maya",
+      "enabled": false,
+      "appearance": "One fictional adult woman aged 30, shoulder-length dark brown hair, beige sweater, seated at home by a window, warm natural daylight",
+      "voice": "en-US-JennyNeural",
+      "theme": "overthinking",
+      "buffer_secret": "BUFFER_MAYA_API_KEY",
+      "organization_id": "",
+      "channels": {
+        "youtube": "",
+        "tiktok": "",
+        "instagram": ""
+      }
+    },
+    {
+      "id": "alex",
+      "name": "Alex",
+      "enabled": false,
+      "appearance": "One fictional adult man aged 32, short dark hair, light stubble, navy T-shirt, seated in a bright home office, natural daylight",
+      "voice": "en-US-GuyNeural",
+      "theme": "direction",
+      "buffer_secret": "BUFFER_ALEX_API_KEY",
+      "organization_id": "",
+      "channels": {
+        "youtube": "",
+        "tiktok": "",
+        "instagram": ""
+      }
+    },
+    {
+      "id": "zoe",
+      "name": "Zoe",
+      "enabled": false,
+      "appearance": "One fictional adult woman aged 27, curly auburn hair, sage green sweater, seated in a cozy apartment, natural daylight",
+      "voice": "en-US-AriaNeural",
+      "theme": "boundaries",
+      "buffer_secret": "BUFFER_ZOE_API_KEY",
+      "organization_id": "",
+      "channels": {
+        "youtube": "",
+        "tiktok": "",
+        "instagram": ""
+      }
+    }
+  ]
+}

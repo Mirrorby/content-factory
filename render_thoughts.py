@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import textwrap
 import wave
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from render_gameplay import read_remote
 
 SOURCE = 'content-factory/assets/leela/gameplay-en-001.mp4'
 SPEED = 2.5
+CARDS = None
 PROMPT = (
     'One continuous 8-second vertical 9:16 photorealistic smartphone shot. '
     'One fictional adult woman aged 30, shoulder-length dark brown hair, beige sweater, '
@@ -82,10 +84,13 @@ def edit(job, person, gameplay, voice):
         raise RuntimeError('Invalid gameplay duration.')
     game_length = duration / SPEED + 2  # all source frames plus readable final hold
     total = 3 + game_length + 4
-    (job / 'hook.txt').write_text('Why do I\noverthink everything?')
-    (job / 'game.txt').write_text("Let's ask Leela.")
-    (job / 'reaction.txt').write_text('Why is this\nso accurate?')
-    (job / 'cta.txt').write_text('What would\nyou ask?')
+    cards = CARDS or dict(hook='Why do I\noverthink everything?', game="Let's ask Leela.",
+                         reaction='Why is this\nso accurate?', cta='What would\nyou ask?')
+    for name, value in cards.items():
+        lines = textwrap.wrap(value, width=29)
+        if len(lines) > 2:
+            raise RuntimeError('Thought card exceeds two lines.')
+        (job / (name + '.txt')).write_text('\n'.join(lines), encoding='utf-8')
     normal = ('scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,'
               'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0xf5eedf,setsar=1,fps=30')
     label = ''
@@ -121,6 +126,19 @@ def edit(job, person, gameplay, voice):
 
 
 def main():
+    global SOURCE, SPEED, PROMPT, CARDS
+    production = None
+    if os.environ.get('VIDEO_SPEC_PATH'):
+        production = json.loads(Path(os.environ['VIDEO_SPEC_PATH']).read_text())
+        SOURCE, SPEED = production['source'], production['speed']
+        CARDS = {key: production['phrase'][key] for key in ('hook', 'game', 'reaction', 'cta')}
+        PROMPT = ('One continuous 8-second vertical 9:16 photorealistic smartphone shot. '
+                  + production['character']['appearance'] + ', medium close-up. '
+                  'Staged fictional product demo. No text, logos, captions or music. '
+                  'Seconds 0 to 4: silently reads a phone below frame, mouth closed. '
+                  'Second 4: looks up with a surprised smile. Seconds 5 to 6.2: says ONLY "No way!" '
+                  'in American English. Seconds 6.2 to 8: silent smile, lips closed. '
+                  'No other words. No cuts. Consistent face and clothing.')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', core.JOB_ID):
         raise RuntimeError('Invalid job ID.')
     store = R2Store()
@@ -129,6 +147,8 @@ def main():
     spec = dict(version=1, model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='en-US-JennyNeural',
         caption='Find on Telegram: @leela_ru_bot')
+    if production:
+        spec.update(production=production, voice=production['character']['voice'])
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
@@ -157,7 +177,14 @@ def main():
         else:
             store.client.download_file(store.bucket, store.prefix + voice.name, str(voice))
         actor.PROMPTS = [PROMPT]
-        person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip())
+        reuse = production.get('actor_asset') if production else None
+        if reuse:
+            person = job / 'intro.mp4'
+            store.client.download_file(store.bucket, reuse['key'], str(person))
+            if actor.sha(person) != reuse['sha256']:
+                raise RuntimeError('Character asset checksum mismatch.')
+        else:
+            person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip())
         final, info = edit(job, person, source, voice)
         store.upload_file(final)
         state.update(status='ready', video_sha256=actor.sha(final), video_info=info)

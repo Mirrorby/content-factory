@@ -1,0 +1,58 @@
+name: Leela production and Buffer queues
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: Generate and refill configured Buffer queues
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - production.py
+      - factory/buffer_api.py
+      - config/production.json
+      - config/phrases-en.json
+      - tests/test_production.py
+      - .github/workflows/production.yml
+permissions:
+  contents: read
+concurrency:
+  group: content-factory-generator
+  cancel-in-progress: false
+jobs:
+  production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - name: Test queue accounting and recovery
+        run: python -m unittest discover -s tests -p test_production.py -v
+      - name: Preview production plan
+        run: python production.py
+      - name: Install video tools
+        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.execute)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Generate and refill Buffer
+        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.execute)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BUFFER_MAYA_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          BUFFER_ALEX_API_KEY: ${{ secrets.BUFFER_ALEX_API_KEY }}
+          BUFFER_ZOE_API_KEY: ${{ secrets.BUFFER_ZOE_API_KEY }}
+          BUFFER_MEDIA_BUCKET: ${{ vars.BUFFER_MEDIA_BUCKET }}
+          BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
+        run: python production.py --execute
