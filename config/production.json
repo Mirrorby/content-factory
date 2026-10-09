@@ -17,7 +17,7 @@
     {
       "id": "maya",
       "name": "Maya",
-      "enabled": false,
+      "enabled": true,
       "appearance": "One fictional adult woman aged 30, shoulder-length dark brown hair, beige sweater, seated at home by a window, warm natural daylight",
       "voice": "en-US-JennyNeural",
       "theme": "overthinking",
