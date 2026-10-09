@@ -1,5 +1,6 @@
 """Deliver an existing video to the owner's configured private Telegram chat."""
 import json
+import hashlib
 import os
 import re
 import sys
@@ -60,13 +61,22 @@ def deliver(store, bucket, prefix, token, chat_id):
         store.download_file(bucket, source, str(video))
         if not 0 < video.stat().st_size <= 50_000_000:
             raise Stop('Downloaded video size is outside the supported range.')
-        state = {'status': 'sending', 'chat_id': chat_id, 'bot_id': token.split(':')[0],
+        job_id = prefix.rstrip('/').split('/')[-1]
+        if len(job_id.encode()) > 55:
+            raise Stop('Job ID is too long for Telegram review buttons.')
+        digest = hashlib.sha256(video.read_bytes()).hexdigest()
+        keyboard = {'inline_keyboard': [[
+            {'text': '✅ Одобрить', 'callback_data': 'cf:a:' + job_id},
+            {'text': '❌ Отклонить', 'callback_data': 'cf:r:' + job_id}
+        ]]}
+        state = {'video_sha256': digest, 'status': 'sending', 'chat_id': chat_id, 'bot_id': token.split(':')[0],
                  'source': source, 'run_id': os.environ.get('GITHUB_RUN_ID')}
         save(state, IfNoneMatch='*')
 
         print('Sending existing video to your configured private chat.', flush=True)
         with video.open('rb') as media:
-            result = api('sendVideo', data={'chat_id': chat_id, 'caption': caption},
+            result = api('sendVideo', data={'chat_id': chat_id, 'caption': caption,
+                         'reply_markup': json.dumps(keyboard, ensure_ascii=False)},
                          files={'video': ('final.mp4', media, 'video/mp4')})
         if not result.get('message_id') or str(result.get('chat', {}).get('id')) != chat_id:
             raise Stop('Unexpected delivery response. Check the chat before retrying.')
