@@ -9,6 +9,7 @@ from factory.buffer_api import Buffer
 class ProductionTests(unittest.TestCase):
     def setUp(self):
         self.config, self.phrases = p.load_config()
+        self.config.update(queue_target=10, max_new_per_cycle=10, require_review=True)
         self.character = self.config['characters'][0]
         self.state = {'jobs': [], 'usage': {}}
         self.time = datetime(2026, 1, 30, 5, 17, tzinfo=timezone.utc)
@@ -53,7 +54,8 @@ class ProductionTests(unittest.TestCase):
     def test_unknown_submission_prevents_duplicate(self):
         p.plan(self.config, self.phrases, self.character, self.state, self.empty, self.time)
         job = self.state['jobs'][0]
-        job['status'] = 'ready'
+        job.update(status='ready', sha256='video-a',
+                   telegram_review={'sha256':'video-a'}, review={'approved_sha256':'video-a'})
         class API:
             calls = 0
             def queue(self, channels): return []
@@ -74,7 +76,8 @@ class ProductionTests(unittest.TestCase):
 
     def test_full_queue_keeps_waiting_video(self):
         p.plan(self.config, self.phrases, self.character, self.state, self.empty, self.time)
-        self.state['jobs'][0]['status'] = 'ready'
+        self.state['jobs'][0].update(status='ready', sha256='video-a',
+            telegram_review={'sha256':'video-a'}, review={'approved_sha256':'video-a'})
         class API:
             def queue(self, channels): return [{}]*10
             def create(self, *args): raise AssertionError('Full queue must not receive posts')
@@ -88,6 +91,23 @@ class ProductionTests(unittest.TestCase):
         with patch.object(api, 'query', side_effect=pages) as query:
             self.assertEqual(len(api.queue(['ch'])), 2)
             self.assertEqual(query.call_args.args[1]['after'], 'next')
+
+    def test_review_blocks_unapproved_or_changed_video(self):
+        p.plan(self.config, self.phrases, self.character, self.state, self.empty, self.time)
+        job = self.state['jobs'][0]
+        job.update(status='ready', sha256='video-a', telegram_review={'sha256':'video-a'})
+        class API:
+            def queue(self, channels): raise AssertionError('Unapproved video reached Buffer')
+        p.deliver(API(), None, self.config, self.character, self.state, lambda: None)
+        job['review'] = {'approved_sha256':'old-video'}
+        p.deliver(API(), None, self.config, self.character, self.state, lambda: None)
+
+    def test_telegram_receipt_prevents_repeat(self):
+        job = {'id':'test-review', 'sha256':'video-a'}
+        with patch.object(p.subprocess, 'run') as run:
+            p.send_for_review(job, lambda: None)
+            p.send_for_review(job, lambda: None)
+            self.assertEqual(run.call_count, 1)
 
     def test_cards_fit_two_lines(self):
         import textwrap
