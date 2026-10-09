@@ -207,6 +207,29 @@ def validate_live(config, characters):
         raise RuntimeError('Each character must have its own three channels.')
 
 
+def load_private_channels(ledger, characters):
+    """Resolve missing channel IDs from private discovery; never print them."""
+    from render_gameplay import read_remote
+    for character in characters:
+        if character.get('organization_id') and all(character['channels'].values()):
+            continue
+        report = read_remote(ledger.store, 'buffer-discovery-' + character['id'] + '.json')
+        mapping = (report or {}).get('mapping')
+        if not mapping or not mapping.get('organization_id'):
+            raise RuntimeError('Run the Buffer connection check for ' + character['id'])
+        channels = mapping.get('channels', {})
+        if set(channels) != set(PLATFORMS) or not all(isinstance(v, str) and v for v in channels.values()):
+            raise RuntimeError('Incomplete private Buffer channel mapping.')
+        # Do not silently override a partially configured explicit mapping.
+        if character.get('organization_id') and character['organization_id'] != mapping['organization_id']:
+            raise RuntimeError('Explicit organization differs from private discovery.')
+        for platform, value in character['channels'].items():
+            if value and value != channels[platform]:
+                raise RuntimeError('Explicit channel differs from private discovery.')
+        character['organization_id'] = mapping['organization_id']
+        character['channels'] = channels.copy()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--execute', action='store_true')
@@ -224,9 +247,10 @@ def main():
     if not characters:
         print('No enabled characters. No generation or publication performed.')
         return
+    ledger = Ledger()
+    load_private_channels(ledger, characters)
     validate_live(config, characters)
     from factory.buffer_api import Buffer
-    ledger = Ledger()
     ledger.store.put('lock.json', json.dumps({'run_id': os.environ.get('GITHUB_RUN_ID')}).encode(),
                      IfNoneMatch='*')
     try:
