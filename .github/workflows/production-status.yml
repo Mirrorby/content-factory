@@ -1,0 +1,42 @@
+name: Inspect production progress
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/production-status.yml]
+permissions:
+  contents: read
+jobs:
+  status:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - name: Read private journal and print aggregate status only
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          python - <<'PY'
+          import json
+          from collections import Counter
+          from production import Ledger
+          try:
+              ledger = Ledger()
+              state = ledger.read()
+              for name, character in state['characters'].items():
+                  jobs = character['jobs']
+                  result = dict(character=name, jobs=dict(Counter(j['status'] for j in jobs)),
+                      deliveries={p:dict(Counter(j['deliveries'][p]['status'] for j in jobs))
+                                  for p in ('youtube','tiktok','instagram')})
+                  print('PRODUCTION_STATUS='+json.dumps(result))
+          except Exception as exc:
+              print('STATUS_ERROR='+type(exc).__name__)
+              raise SystemExit(1)
+          PY
