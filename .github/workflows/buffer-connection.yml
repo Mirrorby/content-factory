@@ -1,0 +1,76 @@
+name: Check Maya Buffer connection
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/buffer-connection.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Install private storage client
+        run: pip install boto3==1.40.45
+      - name: Verify connection and save routing privately
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          import boto3
+          from botocore.config import Config
+          def main():
+              key = os.environ.get('BUFFER_API_KEY', '').strip()
+              if not key:
+                  raise RuntimeError('Missing Buffer secret')
+              def query(document, variables=None):
+                  request = urllib.request.Request('https://api.buffer.com',
+                      data=json.dumps({'query': document, 'variables': variables or {}}).encode(),
+                      headers={'Authorization': 'Bearer '+key, 'Content-Type': 'application/json'})
+                  with urllib.request.urlopen(request, timeout=45) as response:
+                      data = json.load(response)
+                  if data.get('errors') or not data.get('data'):
+                      raise RuntimeError('Buffer read query failed')
+                  return data['data']
+              orgs = query('query { account { organizations { id } } }')['account']['organizations']
+              reports, candidates = [], []
+              expected = {'youtube', 'tiktok', 'instagram'}
+              for org in orgs:
+                  channels = query('''query($input: ChannelsInput!) {
+                      channels(input:$input) {
+                          id service timezone isDisconnected isLocked isQueuePaused
+                          postingSchedule { day paused times }
+                      }
+                  }''', {'input': {'organizationId': org['id']}})['channels']
+                  reports.append({'organization_id': org['id'], 'channels': channels})
+                  selected = [c for c in channels if c['service'] in expected]
+                  if len(selected) == 3 and {c['service'] for c in selected} == expected:
+                      candidates.append({'organization_id': org['id'],
+                          'channels': {c['service']: c['id'] for c in selected}})
+              client = boto3.client('s3',
+                  endpoint_url='https://'+os.environ['R2_ACCOUNT_ID']+'.r2.cloudflarestorage.com',
+                  aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'],
+                  aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'], region_name='auto',
+                  config=Config(request_checksum_calculation='when_required',
+                                response_checksum_validation='when_required'))
+              client.put_object(Bucket=os.environ['R2_BUCKET'],
+                  Key='content-factory/production/v1/buffer-discovery-maya.json',
+                  Body=json.dumps({'reports': reports, 'mapping': candidates[0] if len(candidates)==1 else None}).encode(),
+                  ContentType='application/json')
+              if len(candidates) != 1:
+                  print('BUFFER_CHECK=NEEDS_CHANNEL_SELECTION')
+                  return
+              print('BUFFER_CHECK=CONNECTED_AND_MAPPING_SAVED_PRIVATELY')
+              print('No generation or publication performed.')
+          try:
+              main()
+          except Exception as exc:
+              print('BUFFER_CHECK=FAILED; error_type='+type(exc).__name__)
+              raise SystemExit(1)
+          PY
