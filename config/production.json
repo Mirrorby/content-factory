@@ -10,7 +10,7 @@
     "09:00",
     "19:00"
   ],
-  "posting_timezone": null,
+  "posting_timezone": "America/New_York",
   "public_bucket_env": "BUFFER_MEDIA_BUCKET",
   "public_base_url_env": "BUFFER_MEDIA_BASE_URL",
   "characters": [
