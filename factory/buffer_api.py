@@ -29,7 +29,7 @@ class Buffer:
     def queue(self, channels):
         query = '''query($input: PostsInput!, $after: String) {
           posts(first:100, after:$after, input:$input) {
-            edges { node { id channelId status } }
+            edges { node { id channelId status dueAt } }
             pageInfo { hasNextPage endCursor }
           }
         }'''
@@ -75,7 +75,9 @@ class Buffer:
                     len(set(d['times'])) != config.get('posts_per_day', 2) for d in days)):
                 raise RuntimeError('Set the two daily posting slots in every Buffer channel.')
 
-    def create(self, channel, platform, url, title, caption):
+        return by_id
+
+    def create(self, channel, platform, url, title, caption, due_at=None):
         metadata = {
             'youtube': {'title': title[:100], 'categoryId': '22', 'privacy': 'public',
                         'madeForKids': False, 'isAiGenerated': True},
@@ -85,6 +87,8 @@ class Buffer:
         payload = dict(text=caption, channelId=channel, schedulingType='automatic',
                        mode='addToQueue', needsApproval=False, aiAssisted=True,
                        assets=[{'video': {'url': url}}], metadata={platform: metadata[platform]})
+        if due_at:
+            payload.update(mode='customScheduled', dueAt=due_at)
         data = self.query('''mutation($input: CreatePostInput!) {
           createPost(input:$input) {
             ... on PostActionSuccess { post { id dueAt } }
@@ -94,3 +98,4 @@ class Buffer:
         if not data.get('post', {}).get('id'):
             raise RuntimeError('Buffer did not confirm creation. Inspect queue before retrying.')
         return data['post']
+

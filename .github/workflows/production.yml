@@ -1,5 +1,7 @@
 name: Leela production and Buffer queues
 on:
+  schedule:
+    - cron: '0 10 * * *'
   workflow_dispatch:
     inputs:
       execute:
@@ -9,6 +11,9 @@ on:
   push:
     branches: [main]
     paths:
+      - daily-start.json
+      - daily_production.py
+      - tests/test_daily_production.py
       - production.py
       - factory/buffer_api.py
       - config/production.json
@@ -34,14 +39,14 @@ jobs:
       - name: Install dependencies
         run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
       - name: Test queue accounting and recovery
-        run: python -m unittest discover -s tests -p test_production.py -v
+        run: python -m unittest discover -s tests -p 'test_*production.py' -v
       - name: Preview production plan
         run: python production.py
       - name: Install video tools
-        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute)
+        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[start-daily-pair]'))
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - name: Generate and refill Buffer
-        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute)
+        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[start-daily-pair]'))
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -56,3 +61,4 @@ jobs:
           BUFFER_MEDIA_BUCKET: ${{ vars.BUFFER_MEDIA_BUCKET }}
           BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
         run: python production.py --execute
+

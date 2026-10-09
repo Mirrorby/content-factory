@@ -94,6 +94,10 @@ def status_label(job):
         return '✅ Отправлено в Buffer'
     if any(s in ('unknown','error') for s in statuses):
         return '⚠️ Нужна проверка отправки'
+    if any(s == 'expired' for s in statuses):
+        return '⚠️ Срок публикации прошёл — нужен перенос'
+    if any(s == 'slot_conflict' for s in statuses):
+        return '⚠️ Слот занят — нужна проверка'
     return '✅ Одобрено — ожидает отправки'
 
 
@@ -185,3 +189,4 @@ if __name__ == '__main__':
     except Exception as exc:
         print('Review stopped: '+type(exc).__name__)
         raise SystemExit(1)
+

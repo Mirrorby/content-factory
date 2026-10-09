@@ -9,7 +9,7 @@ from factory.buffer_api import Buffer
 class ProductionTests(unittest.TestCase):
     def setUp(self):
         self.config, self.phrases = p.load_config()
-        self.config.update(queue_target=10, max_new_per_cycle=10, require_review=True)
+        self.config.update(queue_target=10, max_new_per_cycle=10, require_review=True, daily_mode=False, cycle_hours=96)
         self.character = self.config['characters'][0]
         self.state = {'jobs': [], 'usage': {}}
         self.time = datetime(2026, 1, 30, 5, 17, tzinfo=timezone.utc)
@@ -118,3 +118,4 @@ class ProductionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

@@ -57,11 +57,11 @@ class Ledger:
     def __init__(self):
         from run import R2Store
         self.store = R2Store(require_gemini=False)
-        self.store.prefix = 'content-factory/production/v1/'
+        self.store.prefix = 'content-factory/production/v2/'
 
     def read(self):
         from render_gameplay import read_remote
-        return read_remote(self.store, 'ledger.json') or {'version': 1, 'characters': {}}
+        return read_remote(self.store, 'ledger.json') or {'version': 2, 'characters': {}}
 
     def save(self, state):
         self.store.put('ledger.json', json.dumps(state, sort_keys=True).encode())
@@ -190,14 +190,26 @@ def deliver(api, ledger, config, character, state, save):
             delivery = job['deliveries'][platform]
             if delivery['status'] != 'waiting':
                 continue
+            due_at = delivery.get('target_due_at')
+            if config.get('daily_mode') and not due_at:
+                raise RuntimeError('Daily delivery has no reserved publishing slot.')
+            if due_at and datetime.fromisoformat(due_at.replace('Z', '+00:00')) <= now():
+                delivery['status'] = 'expired'
+                save()
+                continue
             channel = character['channels'][platform]
             remote = api.queue([channel])  # refresh capacity immediately before each mutation
             if len(remote) >= config['queue_target']:
                 continue
+            if due_at and any(p.get('dueAt') and datetime.fromisoformat(p['dueAt'].replace('Z', '+00:00')) == datetime.fromisoformat(due_at.replace('Z', '+00:00')) for p in remote):
+                delivery['status'] = 'slot_conflict'
+                save()
+                continue
             url = expose_video(ledger, config, job, save)
             delivery.update(status='unknown', attempted_at=now().isoformat(), channel_id=channel)
             save()  # crash/timeout after POST cannot trigger a blind duplicate on retry
-            receipt = api.create(channel, platform, url, job['spec']['phrase']['hook'], config['caption'])
+            options = {'due_at': due_at} if due_at else {}
+            receipt = api.create(channel, platform, url, job['spec']['phrase']['hook'], config['caption'], **options)
             delivery.update(status='scheduled', post_id=receipt['id'], due_at=receipt.get('dueAt'))
             save()
 
@@ -232,7 +244,12 @@ def load_private_channels(ledger, characters):
     for character in characters:
         if character.get('organization_id') and all(character['channels'].values()):
             continue
-        report = read_remote(ledger.store, 'buffer-discovery-' + character['id'] + '.json')
+        original_prefix = ledger.store.prefix
+        try:
+            ledger.store.prefix = 'content-factory/production/v1/'
+            report = read_remote(ledger.store, 'buffer-discovery-' + character['id'] + '.json')
+        finally:
+            ledger.store.prefix = original_prefix
         mapping = (report or {}).get('mapping')
         if not mapping or not mapping.get('organization_id'):
             raise RuntimeError('Run the Buffer connection check for ' + character['id'])
@@ -257,10 +274,14 @@ def main():
     if not args.execute:
         preview = {'mode': 'preview', 'cycle_hours': config['cycle_hours'],
                    'first_batch_per_character': config['queue_target'],
-                   'normal_refill_after_four_days': 8, 'phrases': len(phrases),
+                   'videos_per_day': config['posts_per_day'], 'phrases': len(phrases),
                    'characters': [{k:c[k] for k in ('id', 'name', 'theme', 'enabled')}
                                   for c in config['characters']]}
         print(json.dumps(preview, indent=2))
+        return
+    if config.get('daily_mode'):
+        from daily_production import execute
+        execute(config, phrases)
         return
     characters = [c for c in config['characters'] if c['enabled']]
     if not characters:
@@ -313,3 +334,4 @@ if __name__ == '__main__':
     except Exception as exc:
         print('Production stopped: ' + (str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__))
         sys.exit(1)
+

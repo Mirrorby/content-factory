@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "caption": "Find Leela on Telegram: @leela_ru_bot",
-  "cycle_hours": 96,
-  "queue_target": 1,
-  "max_new_per_cycle": 1,
+  "cycle_hours": 24,
+  "queue_target": 10,
+  "max_new_per_cycle": 2,
   "source": "content-factory/assets/leela/gameplay-en-001.mp4",
   "speed": 2.5,
   "posting_timezone": "America/New_York",
@@ -58,5 +58,6 @@
     }
   ],
   "posts_per_day": 2,
-  "require_review": true
+  "require_review": true,
+  "daily_mode": true
 }
