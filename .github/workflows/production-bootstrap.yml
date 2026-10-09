@@ -1,0 +1,79 @@
+name: Bootstrap Maya production
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/production-bootstrap.yml]
+permissions:
+  contents: read
+concurrency:
+  group: content-factory-generator
+  cancel-in-progress: false
+jobs:
+  production:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - name: Test queue accounting and recovery
+        run: python -m unittest discover -s tests -p test_production.py -v
+      - name: Preview production plan
+        run: python production.py
+      - name: Install video tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - name: Generate and refill Buffer
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BUFFER_MAYA_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          BUFFER_ALEX_API_KEY: ${{ secrets.BUFFER_ALEX_API_KEY }}
+          BUFFER_ZOE_API_KEY: ${{ secrets.BUFFER_ZOE_API_KEY }}
+          BUFFER_MEDIA_BUCKET: ${{ vars.BUFFER_MEDIA_BUCKET }}
+          BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
+        run: |
+          python - <<'PY'
+          import json, sys
+          import production as p
+          original = p.load_config
+          def limited():
+              config, phrases = original()
+              config['max_new_per_cycle'] = 1
+              return config, phrases
+          sys.argv = ['production.py', '--execute']
+          try:
+              p.load_config = limited
+              p.main()
+              ledger = p.Ledger()
+              ledger.store.put('lock.json', b'{}', IfNoneMatch='*')
+              try:
+                  state = ledger.read()
+                  maya = state['characters']['maya']
+                  jobs = maya['jobs']
+                  if not jobs:
+                      raise RuntimeError('No bootstrap video; inspect queue capacity.')
+                  if any(j['status'] != 'ready' or any(d['status'] not in ('scheduled','sent')
+                      for d in j['deliveries'].values()) for j in jobs):
+                      raise RuntimeError('Bootstrap deliveries not confirmed; batch paused.')
+                  print('BOOTSTRAP_FIRST_VIDEO_ALL_CHANNELS=OK', flush=True)
+                  if len(jobs) == 1:
+                      maya['last_cycle_at'] = None
+                      ledger.save(state)
+              finally:
+                  ledger.store.client.delete_object(Bucket=ledger.store.bucket, Key=ledger.store.prefix+'lock.json')
+              p.load_config = original
+              p.main()
+              print('BOOTSTRAP_BATCH_COMPLETED', flush=True)
+          except Exception as exc:
+              print('BOOTSTRAP_STOPPED='+type(exc).__name__, flush=True)
+              raise SystemExit(1)
+          PY
