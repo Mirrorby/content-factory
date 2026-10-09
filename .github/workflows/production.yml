@@ -40,10 +40,10 @@ jobs:
       - name: Preview production plan
         run: python production.py
       - name: Install video tools
-        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.execute)
+        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - name: Generate and refill Buffer
-        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED == 'true') || (github.event_name == 'workflow_dispatch' && inputs.execute)
+        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute)
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
