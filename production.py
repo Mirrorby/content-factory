@@ -38,7 +38,7 @@ def select_phrase(phrases, theme, usage):
 def load_config():
     config = json.loads((ROOT / 'config/production.json').read_text())
     phrases = json.loads((ROOT / 'config/phrases-en.json').read_text())
-    if config['caption'] != 'Find on Telegram: @leela_ru_bot':
+    if config['caption'] != 'Find Leela on Telegram: @leela_ru_bot':
         raise RuntimeError('Unexpected production caption.')
     if not 1 <= config['queue_target'] <= 10 or not 1 <= config['max_new_per_cycle'] <= 10:
         raise RuntimeError('Queue and batch caps must be 1..10.')
@@ -107,6 +107,7 @@ def plan(config, phrases, character, state, counts, current):
         job_id = f"prod-{character['id']}-{sequence:06d}"
         spec = dict(character={k: character[k] for k in ('id', 'appearance', 'voice')},
                     phrase=phrase, source=config['source'], speed=config['speed'], actor_asset=None)
+        spec['character']['reference_image_key'] = character.get('reference_image_key')
         state['jobs'].append(dict(id=job_id, status='planned', spec=spec,
             created_at=current.isoformat(), deliveries={p: {'status': 'waiting'} for p in PLATFORMS}))
         state['usage'][phrase['id']] = state['usage'].get(phrase['id'], 0) + 1
@@ -119,7 +120,8 @@ def plan(config, phrases, character, state, counts, current):
 def render(ledger, state, job, save):
     store = ledger.store
     if job['status'] == 'planned':
-        job['spec']['actor_asset'] = state.get('actor_asset')
+        cached = state.get('actor_asset')
+        job['spec']['actor_asset'] = cached if cached and cached.get('reference_sha256') else None
         job['status'] = 'rendering'
         save()
     with tempfile.TemporaryDirectory() as directory:
@@ -132,8 +134,9 @@ def render(ledger, state, job, save):
     result = json.loads(store.client.get_object(Bucket=store.bucket, Key=prefix+'state.json')['Body'].read())
     if result['status'] != 'ready':
         raise RuntimeError('Renderer did not save a ready result.')
-    if not state.get('actor_asset'):
-        state['actor_asset'] = {'key': prefix+'intro.mp4', 'sha256': result['clips'][0]['sha256']}
+    if not job['spec'].get('actor_asset'):
+        state['actor_asset'] = {'key': prefix+'intro.mp4', 'sha256': result['clips'][0]['sha256'],
+                                'reference_sha256': result.get('reference_sha256')}
     job.update(status='ready', video_key=prefix+'final.mp4', sha256=result['video_sha256'])
     save()
 
