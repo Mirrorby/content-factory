@@ -48,7 +48,7 @@ def deliver(store, bucket, prefix, token, chat_id):
         raise Stop('Recipient must be the configured private chat.')
     if chat_id == token.split(':')[0]:
         raise Stop('Use your personal chat ID, not the bot ID.')
-    caption = 'Find on Telegram: @leela_ru_bot'
+    caption = 'Find Leela on Telegram: @leela_ru_bot'
     if not isinstance(caption, str) or len(caption.encode('utf-16-le')) // 2 > 1024:
         raise Stop('Caption is invalid or exceeds Telegram limit.')
     source = prefix + 'final.mp4'
