@@ -139,7 +139,17 @@ def render(ledger, state, job, save):
                                 'reference_sha256': result.get('reference_sha256')}
     job.update(status='ready', video_key=prefix+'final.mp4', sha256=result['video_sha256'])
     save()
+    send_for_review(job, save)
 
+
+def send_for_review(job, save):
+    """Telegram receipt survives runner failure; retry never resends confirmed video."""
+    if job.get('telegram_review', {}).get('sha256') == job['sha256']:
+        return
+    subprocess.run([sys.executable, str(ROOT / 'send_telegram.py')], cwd=ROOT,
+        env={**os.environ, 'JOB_ID': job['id']}, check=True, timeout=600)
+    job['telegram_review'] = {'sha256': job['sha256'], 'sent_at': now().isoformat()}
+    save()
 
 def expose_video(ledger, config, job, save):
     """Only final videos copied to a SEPARATE public media bucket. No expiring URLs."""
@@ -171,6 +181,11 @@ def deliver(api, ledger, config, character, state, save):
     for job in state['jobs']:
         if job['status'] != 'ready':
             continue
+        if job.get('telegram_review', {}).get('sha256') != job.get('sha256'):
+            continue
+        if config.get('require_review', True) and (
+            job.get('review', {}).get('approved_sha256') != job.get('sha256')):
+            continue
         for platform in PLATFORMS:
             delivery = job['deliveries'][platform]
             if delivery['status'] != 'waiting':
@@ -192,7 +207,8 @@ def validate_live(config, characters):
     if not config.get('posting_timezone'):
         raise RuntimeError('Set posting_timezone and the same morning/evening schedule in Buffer.')
     ZoneInfo(config['posting_timezone'])
-    required = [config['public_bucket_env'], config['public_base_url_env'], 'GEMINI_API_KEY']
+    required = [config['public_bucket_env'], config['public_base_url_env'], 'GEMINI_API_KEY',
+                'TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID']
     for c in characters:
         required.append(c['buffer_secret'])
         if not c['organization_id'] or set(c['channels']) != set(PLATFORMS) or not all(c['channels'].values()):
@@ -275,6 +291,9 @@ def main():
                 for job in state['jobs']:
                     if job['status'] in ('planned', 'rendering'):
                         render(ledger, state, job, save)
+                    elif job['status'] == 'ready' and any(
+                        d['status'] == 'waiting' for d in job['deliveries'].values()):
+                        send_for_review(job, save)
                 deliver(api, ledger, config, character, state, save)
                 print(character['id'] + ': generation and queue refill completed.', flush=True)
             except Exception as exc:
