@@ -1,0 +1,37 @@
+name: Telegram video review
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/telegram-review.yml, review_telegram.py, tests/test_review_telegram.py]
+permissions:
+  contents: read
+concurrency:
+  group: content-factory-generator
+  cancel-in-progress: false
+jobs:
+  review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - name: Test review authorization
+        run: python -m unittest discover -s tests -p test_review_telegram.py -v
+      - name: Process review buttons
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BUFFER_MAYA_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          BUFFER_MEDIA_BUCKET: ${{ vars.BUFFER_MEDIA_BUCKET }}
+          BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
+        run: python review_telegram.py
