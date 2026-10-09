@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "caption": "Find on Telegram: @leela_ru_bot",
+  "caption": "Find Leela on Telegram: @leela_ru_bot",
   "cycle_hours": 96,
   "queue_target": 1,
   "max_new_per_cycle": 1,
@@ -23,7 +23,8 @@
         "youtube": "",
         "tiktok": "",
         "instagram": ""
-      }
+      },
+      "reference_image_key": "content-factory/assets/leela/maya-reference.png"
     },
     {
       "id": "alex",
