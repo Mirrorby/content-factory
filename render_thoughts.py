@@ -1,6 +1,5 @@
 """Thought cards, complete silent gameplay, one clean spoken reaction."""
 import array
-import asyncio
 import hashlib
 import json
 import math
@@ -12,7 +11,6 @@ import textwrap
 import wave
 from pathlib import Path
 
-import edge_tts
 import render_actor as actor
 from factory import core
 from run import R2Store
@@ -111,9 +109,12 @@ def edit(job, person, gameplay, voice):
     actual = actor.media_info(job / 'silent.mp4')['duration']
     reaction_at = 3 + game_length + 1
     music(job / 'music.wav', actual, reaction_at)
-    delay = round(reaction_at * 1000)
-    ffmpeg(job, ['-i', 'silent.mp4', '-i', 'music.wav', '-i', str(voice),
-        '-filter_complex', f'[2:a]adelay={delay}:all=1,volume=1.0[v];'
+    # Use exactly the same actor interval for picture and voice (seconds 4..8).
+    # Keep its original timing and expression; never replace it with TTS.
+    delay = round((3 + game_length) * 1000)
+    ffmpeg(job, ['-i', 'silent.mp4', '-i', 'music.wav', '-i', str(person),
+        '-filter_complex', f'[2:a]atrim=start=4:end=8,asetpts=PTS-STARTPTS,'
+        f'afade=t=in:st=0:d=0.04,afade=t=out:st=3.9:d=0.1,adelay={delay}:all=1[v];'
         '[1:a][v]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
         '-map', '0:v:0', '-map', '[a]', '-t', str(actual), '-c:v', 'copy',
         '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2',
@@ -144,11 +145,26 @@ def main():
     store = R2Store()
     job = (Path('thought-jobs') / core.JOB_ID).resolve()
     job.mkdir(parents=True, exist_ok=True)
-    spec = dict(version=1, model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
-        max_requests=1, speech='No way!', voice='en-US-JennyNeural',
-        caption='Find on Telegram: @leela_ru_bot')
+    reference_key = os.environ.get('REFERENCE_IMAGE_KEY') or (
+        production['character'].get('reference_image_key') if production else None)
+    if not reference_key or not reference_key.startswith('content-factory/assets/leela/'):
+        raise RuntimeError('A private Maya reference image is required before generation.')
+    reference = job / 'reference.png'
+    store.client.download_file(store.bucket, reference_key, str(reference))
+    if reference.read_bytes()[:8] != b'\x89PNG\r\n\x1a\n':
+        raise RuntimeError('Reference must be the uploaded PNG portrait.')
+    reference_sha = actor.sha(reference)
+    PROMPT += (' Preserve the exact face, hair, age, cream knit sweater and room from the reference image. '
+               'The same woman throughout. The spoken No way! must be expressive, surprised, warm, '
+               'with natural breath and intonation, synchronized to her mouth. '
+               'No voice-over, no off-screen speaker, no background music. '
+               'Keep speech fully within seconds 5 to 6.2.')
+    spec = dict(version=2, model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
+        max_requests=1, speech='No way!', voice='native-generated-audio',
+        reference_key=reference_key, reference_sha256=reference_sha,
+        caption='Find Leela on Telegram: @leela_ru_bot')
     if production:
-        spec.update(production=production, voice=production['character']['voice'])
+        spec.update(production=production)
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
@@ -168,26 +184,21 @@ def main():
                          clips=[{'status': 'new'}])
             store.put('spec.json', json.dumps(spec).encode())
             store.put('state.json', json.dumps(state).encode())
-        # All dialogue comes from a separate clean speech track. Discard Veo audio.
-        voice = job / 'reaction.mp3'
-        if not read_remote(store, 'voice.json'):
-            asyncio.run(edge_tts.Communicate('No way!', spec['voice'], rate='+10%').save(str(voice)))
-            store.upload_file(voice)
-            store.put('voice.json', json.dumps({'sha256': actor.sha(voice)}).encode())
-        else:
-            store.client.download_file(store.bucket, store.prefix + voice.name, str(voice))
         actor.PROMPTS = [PROMPT]
         reuse = production.get('actor_asset') if production else None
         if reuse:
+            if reuse.get('reference_sha256') != reference_sha:
+                raise RuntimeError('Cached actor does not match the uploaded portrait. Use a new actor asset.')
             person = job / 'intro.mp4'
             store.client.download_file(store.bucket, reuse['key'], str(person))
             if actor.sha(person) != reuse['sha256']:
                 raise RuntimeError('Character asset checksum mismatch.')
         else:
-            person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip())
-        final, info = edit(job, person, source, voice)
+            person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip(), reference=reference)
+        final, info = edit(job, person, source, None)
         store.upload_file(final)
-        state.update(status='ready', video_sha256=actor.sha(final), video_info=info)
+        state.update(status='ready', video_sha256=actor.sha(final), video_info=info,
+                     reference_sha256=reference_sha)
         store.put('state.json', json.dumps(state).encode())
         print(f'Thought cards, full gameplay, one spoken reaction: {info["duration"]:.2f}s. Ready for Telegram.')
     finally:
