@@ -69,8 +69,10 @@ class Buffer:
             if channel['timezone'] != config['posting_timezone']:
                 raise RuntimeError('Buffer channel timezone differs from production config.')
             days = channel['postingSchedule']
-            if ({d['day'] for d in days} != {'mon','tue','wed','thu','fri','sat','sun'} or
-                any(d['paused'] or sorted(d['times']) != sorted(config['posting_times']) for d in days)):
+            if (len(days) != 7 or
+                {d['day'] for d in days} != {'mon','tue','wed','thu','fri','sat','sun'} or
+                any(d['paused'] or len(d['times']) != config.get('posts_per_day', 2) or
+                    len(set(d['times'])) != config.get('posts_per_day', 2) for d in days)):
                 raise RuntimeError('Set the two daily posting slots in every Buffer channel.')
 
     def create(self, channel, platform, url, title, caption):
