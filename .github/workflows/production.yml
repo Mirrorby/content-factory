@@ -43,6 +43,8 @@ jobs:
       - name: Generate and refill Buffer
         if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute)
         env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
