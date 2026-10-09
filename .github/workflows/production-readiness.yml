@@ -1,0 +1,62 @@
+name: Check production readiness
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/production-readiness.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - name: Check without generating or publishing
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BUFFER_MAYA_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          HAS_MEDIA_BUCKET: ${{ vars.BUFFER_MEDIA_BUCKET != '' }}
+          HAS_MEDIA_URL: ${{ vars.BUFFER_MEDIA_BASE_URL != '' }}
+          HAS_GEMINI: ${{ secrets.GEMINI_API_KEY != '' }}
+          AUTO_ENABLED: ${{ vars.PRODUCTION_ENABLED == 'true' }}
+        run: |
+          python - <<'PY'
+          import os
+          from production import Ledger, load_config, load_private_channels
+          from factory.buffer_api import Buffer
+          config, _ = load_config()
+          characters = [c for c in config['characters'] if c['enabled']]
+          stage = 'private_storage'
+          try:
+              ledger = Ledger()
+              load_private_channels(ledger, characters)
+              print('READINESS_PRIVATE_MAPPING=OK')
+              stage = 'source_video'
+              ledger.store.client.head_object(Bucket=ledger.store.bucket, Key=config['source'])
+              print('READINESS_SOURCE=OK')
+              for c in characters:
+                  stage = 'buffer_schedule'
+                  api = Buffer(os.environ[c['buffer_secret']], c['organization_id'])
+                  api.preflight(c, config)
+                  print('READINESS_BUFFER_SCHEDULE=OK')
+                  stage = 'buffer_queue'
+                  api.queue(list(c['channels'].values()))
+                  print('READINESS_BUFFER_QUEUE=OK')
+          except Exception as exc:
+              print('READINESS_FAILED_STAGE='+stage)
+              print('READINESS_ERROR_TYPE='+type(exc).__name__)
+              if isinstance(exc, RuntimeError):
+                  print('READINESS_REASON='+str(exc))
+              raise SystemExit(1)
+          for name in ('HAS_MEDIA_BUCKET','HAS_MEDIA_URL','HAS_GEMINI','AUTO_ENABLED'):
+              print('READINESS_'+name+'='+os.environ.get(name,'false'))
+          print('READINESS_READ_ONLY_COMPLETE')
+          PY
