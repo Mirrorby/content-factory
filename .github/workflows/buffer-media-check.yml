@@ -1,0 +1,75 @@
+name: Check Buffer public media storage
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/buffer-media-check.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - name: Verify private source and public media transfer
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          BUFFER_MEDIA_BUCKET: ${{ vars.BUFFER_MEDIA_BUCKET }}
+          BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
+        run: |
+          python - <<'PY'
+          import os, uuid, requests
+          from urllib.parse import urlparse
+          from run import R2Store
+          stage = 'settings'
+          public_key = None
+          try:
+              bucket = os.environ['BUFFER_MEDIA_BUCKET'].strip()
+              base = os.environ['BUFFER_MEDIA_BASE_URL'].strip().rstrip('/')
+              if not bucket or urlparse(base).scheme != 'https' or not urlparse(base).netloc:
+                  raise RuntimeError('Missing public media variables')
+              if bucket == os.environ['R2_BUCKET']:
+                  raise RuntimeError('Public bucket must be separate')
+              store = R2Store(require_gemini=False)
+              stage = 'public_bucket_access'
+              store.client.head_bucket(Bucket=bucket)
+              print('MEDIA_BUCKET_ACCESS=OK')
+              stage = 'private_to_public_copy'
+              token = uuid.uuid4().hex
+              private_key = 'content-factory/checks/'+token+'.txt'
+              public_key = 'checks/'+token+'.txt'
+              payload = ('content-factory-media-check-'+token).encode()
+              store.client.put_object(Bucket=store.bucket, Key=private_key, Body=payload)
+              try:
+                  store.client.copy_object(Bucket=bucket, Key=public_key,
+                      CopySource={'Bucket':store.bucket,'Key':private_key},
+                      ContentType='text/plain', MetadataDirective='REPLACE')
+              finally:
+                  store.client.delete_object(Bucket=store.bucket, Key=private_key)
+              print('MEDIA_COPY=OK')
+              stage = 'public_download'
+              response = requests.get(base+'/'+public_key, timeout=30, allow_redirects=False)
+              if response.status_code != 200 or response.content != payload:
+                  raise RuntimeError('Public URL did not return uploaded probe')
+              print('MEDIA_PUBLIC_DOWNLOAD=OK')
+          except Exception as exc:
+              print('MEDIA_FAILED_STAGE='+stage)
+              print('MEDIA_ERROR_TYPE='+type(exc).__name__)
+              if hasattr(exc,'response') and isinstance(exc.response,dict):
+                  print('MEDIA_STORAGE_ERROR='+str(exc.response.get('Error',{}).get('Code','unknown')))
+              raise SystemExit(1)
+          finally:
+              if public_key:
+                  try:
+                      store.client.delete_object(Bucket=bucket, Key=public_key)
+                  except Exception:
+                      print('MEDIA_PROBE_CLEANUP=FAILED')
+          PY
