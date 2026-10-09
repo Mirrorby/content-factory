@@ -57,5 +57,6 @@
       }
     }
   ],
-  "posts_per_day": 2
+  "posts_per_day": 2,
+  "require_review": true
 }
