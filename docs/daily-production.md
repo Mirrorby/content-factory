@@ -1,9 +1,9 @@
 # Daily production
 
-Production reserves two distinct Maya jobs for tomorrow in America/New_York.
+Production reserves two distinct Maya jobs for tomorrow by the Europe/Minsk calendar, using America/New_York publishing slots.
 The workflow runs at 10:00 UTC daily (13:00 Minsk); GitHub cron may run late.
 The first pair can be started via workflow_dispatch with execute=true.
-A rerun on the same New York date resumes the same two jobs without a new reservation.
+A rerun on the same Minsk date resumes the same two jobs without a new reservation.
 Each job has its own photo-based actor generation, phrase and frozen per-channel
 Buffer timestamp taken from that day’s two configured slots.
 
