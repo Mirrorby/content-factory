@@ -36,6 +36,28 @@ jobs:
                       deliveries={p:dict(Counter(j['deliveries'][p]['status'] for j in jobs))
                                   for p in ('youtube','tiktok','instagram')})
                   print('PRODUCTION_STATUS='+json.dumps(result))
+                  for job in jobs:
+                      if job['status'] != 'rendering':
+                          continue
+                      key = 'content-factory/v1/' + job['id'] + '/intro.mp4.response.json'
+                      try:
+                          response = json.loads(ledger.store.client.get_object(
+                              Bucket=ledger.store.bucket, Key=key)['Body'].read())
+                      except Exception:
+                          print('GENERATION_DIAGNOSTIC=no_saved_response')
+                          continue
+                      generated = response.get('response', {}).get('generateVideoResponse', {})
+                      reasons = json.dumps(generated.get('raiMediaFilteredReasons', []))
+                      error_text = str(response.get('error', {}).get('message', ''))
+                      categories = [word for word in ('audio','safety','celebrity','prominent','person',
+                          'third-party','copyright','quota','capacity','internal','policy','support')
+                          if word in (reasons + error_text).lower()]
+                      print('GENERATION_DIAGNOSTIC='+json.dumps({
+                          'done':bool(response.get('done')),
+                          'error_code':response.get('error',{}).get('code'),
+                          'filtered_count':generated.get('raiMediaFilteredCount',0),
+                          'sample_count':len(generated.get('generatedSamples',[])),
+                          'reason_categories':categories}))
           except Exception as exc:
               print('STATUS_ERROR='+type(exc).__name__)
               raise SystemExit(1)
