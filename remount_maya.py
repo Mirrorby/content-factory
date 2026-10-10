@@ -12,13 +12,14 @@ def main():
         state = ledger.read()
         save = lambda: ledger.save(state)
         character = state['characters']['maya']
-        old_id = 'daily-maya-20261011-02'
-        new_id = old_id + '-r2'
+        old_id = 'daily-maya-20261011-02-r2'
+        source_id = 'daily-maya-20261011-02'
+        new_id = source_id + '-r3'
         job = next((j for j in character['jobs'] if j['id'] == new_id), None)
-        source = read_json(store, 'content-factory/v1/'+old_id+'/state.json')
+        source = read_json(store, 'content-factory/v1/'+source_id+'/state.json')
         if not source or source['status'] != 'ready':
             raise RuntimeError('Saved actor source is not ready.')
-        asset = dict(key='content-factory/v1/'+old_id+'/intro.mp4',
+        asset = dict(key='content-factory/v1/'+source_id+'/intro.mp4',
                      sha256=source['clips'][0]['sha256'],
                      reference_sha256=source['reference_sha256'])
         if not job:
