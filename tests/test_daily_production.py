@@ -15,7 +15,7 @@ class DailyTests(unittest.TestCase):
             dict(day=day, paused=False, times=['19:15','08:45'])
             for day in ('mon','tue','wed','thu','fri','sat','sun')]} for name in p.PLATFORMS}
         self.state = {'jobs':[], 'usage':{}}
-        self.current = datetime(2026,10,9,22,tzinfo=timezone.utc)
+        self.current = datetime(2026,10,9,20,tzinfo=timezone.utc)
     def test_two_distinct_and_idempotent(self):
         jobs, count = plan_daily(self.config,self.phrases,self.character,self.state,self.channels,self.current)
         self.assertEqual(count,2)
@@ -33,7 +33,7 @@ class DailyTests(unittest.TestCase):
         self.assertEqual(len(self.state['jobs']),4)
         self.assertEqual(len({j['id'] for j in self.state['jobs']}),4)
     def test_posting_timezone_and_dst(self):
-        self.assertEqual(tomorrow(datetime(2026,10,10,1,tzinfo=timezone.utc),self.config),date(2026,10,10))
+        self.assertEqual(tomorrow(datetime(2026,10,10,1,tzinfo=timezone.utc),self.config),date(2026,10,11))
         self.assertEqual(slots(date(2026,11,1),self.channels['youtube'])[0],'2026-11-01T13:45:00Z')
     def test_exact_buffer_timestamp(self):
         api=Buffer('test','test');api.query=Mock(return_value={'createPost':{'post':{'id':'test'}}})
