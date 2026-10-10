@@ -1,4 +1,4 @@
-"""Two new videos for tomorrow in the posting timezone, with private review first."""
+"""Two new videos for tomorrow in the owner's timezone, with private review first."""
 from datetime import datetime, timedelta, timezone, time
 from zoneinfo import ZoneInfo
 import json
@@ -9,7 +9,7 @@ from factory.buffer_api import Buffer
 
 
 def tomorrow(current, config):
-    return current.astimezone(ZoneInfo(config['posting_timezone'])).date() + timedelta(days=1)
+    return current.astimezone(ZoneInfo(config.get('planning_timezone', 'Europe/Minsk'))).date() + timedelta(days=1)
 
 
 def slots(day, channel):
@@ -55,16 +55,18 @@ def plan_daily(config, phrases, character, state, channels, current):
 def check_assets(ledger, config, character):
     from botocore.exceptions import ClientError
     store = ledger.store
+    asset = 'Maya reference PNG'
     try:
         response = store.client.get_object(Bucket=store.bucket,
             Key=character['reference_image_key'], Range='bytes=0-7')
         if response['Body'].read() != b'\x89PNG\r\n\x1a\n':
             raise RuntimeError('Maya reference must be a valid PNG.')
         print('Maya reference PNG is available.', flush=True)
+        asset = 'gameplay video'
         store.client.head_object(Bucket=store.bucket, Key=config['source'])
     except ClientError as exc:
         if exc.response['Error']['Code'] in ('404','NoSuchKey','NotFound'):
-            raise RuntimeError('Required private R2 asset missing: Maya reference PNG or gameplay. No generation started.') from None
+            raise RuntimeError('Required private R2 asset missing: ' + asset + '. No generation started.') from None
         raise
     print('Private reference PNG and gameplay are available.', flush=True)
 
