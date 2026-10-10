@@ -1,4 +1,4 @@
-name: Remount Maya for review
+name: Remount Maya portrait revision for review
 on:
   workflow_dispatch:
   push:
