@@ -1,0 +1,38 @@
+name: Inspect saved Maya video
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/inspect-maya.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Save private preview frames
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          python - <<'PY'
+          import base64, json, subprocess
+          from pathlib import Path
+          from run import R2Store
+          s=R2Store(require_gemini=False)
+          prefix='content-factory/v1/daily-maya-20261011-02/'
+          s.client.download_file(s.bucket,prefix+'intro.mp4','actor.mp4')
+          subprocess.run(['ffmpeg','-y','-v','error','-ss','1','-i','actor.mp4','-frames:v','1','-vf','scale=360:-2','frame.jpg'],check=True)
+          probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json','actor.mp4']))
+          data={'frame_base64':base64.b64encode(Path('frame.jpg').read_bytes()).decode(),'streams':[{k:v for k,v in x.items() if k in ('width','height','codec_type','duration')} for x in probe['streams']]}
+          s.client.put_object(Bucket=s.bucket,Key=prefix+'inspection.json',Body=json.dumps(data).encode(),ContentType='application/json')
+          print('Private inspection saved.')
+          PY
