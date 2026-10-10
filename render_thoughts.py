@@ -1,5 +1,6 @@
 """Thought cards, complete silent gameplay, one clean spoken reaction."""
 import array
+from collections import Counter
 import hashlib
 import json
 import math
@@ -76,6 +77,21 @@ def music(path, duration, reaction_at):
             out.writeframes(data.tobytes())
 
 
+def actor_crop(person):
+    # Veo can bake square reference letterboxing into a 9:16 stream.
+    result = subprocess.run(['ffmpeg', '-nostdin', '-v', 'info', '-i', str(person),
+        '-vf', 'cropdetect=limit=24:round=2:reset=0', '-an', '-f', 'null', '-'],
+        capture_output=True, text=True, check=True, timeout=120)
+    candidates = re.findall(r'crop=(\d+:\d+:\d+:\d+)', result.stderr)
+    if not candidates:
+        return ''
+    rectangle = Counter(candidates).most_common(1)[0][0]
+    width, height, x, y = map(int, rectangle.split(':'))
+    if width < 200 or height < 200:
+        raise RuntimeError('Actor framing could not be detected reliably.')
+    return 'crop=' + rectangle + ','
+
+
 def edit(job, person, gameplay, voice):
     duration = actor.media_info(gameplay)['duration']
     if not math.isfinite(duration) or duration < 5:
@@ -95,7 +111,7 @@ def edit(job, person, gameplay, voice):
     normal = ('scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,'
               'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0xf5eedf,setsar=1,fps=30')
     # Fill portrait canvas; retain the complete actor performance and audio.
-    portrait = ('scale=1080:1920:force_original_aspect_ratio=increase:force_divisible_by=2,'
+    portrait = (actor_crop(person) + 'scale=1080:1920:force_original_aspect_ratio=increase:force_divisible_by=2,'
                 'crop=1080:1920,setsar=1,fps=30')
     parts = [
         (person, 0, actor_length, portrait + card('hook.txt', 1200, 0, actor_length)),
@@ -160,7 +176,7 @@ def main():
                'with natural breath and intonation, synchronized to her mouth. '
                'No voice-over, no off-screen speaker, no background music. '
                'Let the spoken phrase finish naturally, without cutting off any syllable. ')
-    spec = dict(version=3, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
+    spec = dict(version=4, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='native-generated-audio',
         reference_key=reference_key, reference_sha256=reference_sha,
         caption='Find Leela on Telegram: @leela_ru_bot')
