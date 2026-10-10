@@ -81,7 +81,10 @@ def edit(job, person, gameplay, voice):
     if not math.isfinite(duration) or duration < 5:
         raise RuntimeError('Invalid gameplay duration.')
     game_length = duration / SPEED + 2  # all source frames plus readable final hold
-    total = 3 + game_length + 4
+    actor_length = actor.media_info(person)['duration']
+    if not math.isfinite(actor_length) or actor_length < 1:
+        raise RuntimeError('Invalid actor duration.')
+    total = actor_length + game_length
     cards = CARDS or dict(hook='Why do I\noverthink everything?', game="Let's ask Leela.",
                          reaction='Why is this\nso accurate?', cta='What would\nyou ask?')
     for name, value in cards.items():
@@ -91,31 +94,29 @@ def edit(job, person, gameplay, voice):
         (job / (name + '.txt')).write_text('\n'.join(lines), encoding='utf-8')
     normal = ('scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,'
               'pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=0xf5eedf,setsar=1,fps=30')
-    label = ''
+    # Fill portrait canvas; retain the complete actor performance and audio.
+    portrait = ('scale=1080:1920:force_original_aspect_ratio=increase:force_divisible_by=2,'
+                'crop=1080:1920,setsar=1,fps=30')
     parts = [
-        (person, 0, 3, normal + label + card('hook.txt', 1200, 0, 3)),
+        (person, 0, actor_length, portrait + card('hook.txt', 1200, 0, actor_length)),
         (gameplay, 0, game_length, f'setpts=(PTS-STARTPTS)/{SPEED},' + normal +
          ',tpad=stop_mode=clone:stop_duration=2' + card('game.txt', 200, 0, 2.2)),
-        (person, 4, 4, normal + label + card('reaction.txt', 1200, 0, 2.1) +
-         card('cta.txt', 1200, 2.1, 4)),
     ]
     for index, (source, start, length, filters) in enumerate(parts):
         ffmpeg(job, ['-ss', str(start), '-i', str(source), '-t', str(length),
             '-vf', filters, '-an', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
             '-maxrate', '5M', '-bufsize', '10M', '-pix_fmt', 'yuv420p',
             '-video_track_timescale', '15360', str(job / f'part-{index}.mp4')])
-    (job / 'concat.txt').write_text("file 'part-0.mp4'\nfile 'part-1.mp4'\nfile 'part-2.mp4'\n")
+    (job / 'concat.txt').write_text("file 'part-0.mp4'\nfile 'part-1.mp4'\n")
     ffmpeg(job, ['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'silent.mp4'])
     actual = actor.media_info(job / 'silent.mp4')['duration']
-    reaction_at = 3 + game_length + 1
-    music(job / 'music.wav', actual, reaction_at)
-    # Use exactly the same actor interval for picture and voice (seconds 4..8).
-    # Keep its original timing and expression; never replace it with TTS.
-    delay = round((3 + game_length) * 1000)
+    music(job / 'music.wav', actual, actor_length / 2)
+    # Actor picture and native voice both start at zero and run in full.
+    # Music is quiet for the whole speaking shot, then continues through gameplay.
     ffmpeg(job, ['-i', 'silent.mp4', '-i', 'music.wav', '-i', str(person),
-        '-filter_complex', f'[2:a]atrim=start=4:end=8,asetpts=PTS-STARTPTS,'
-        f'afade=t=in:st=0:d=0.04,afade=t=out:st=3.9:d=0.1,adelay={delay}:all=1[v];'
-        '[1:a][v]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
+        '-filter_complex', f"[1:a]volume=0.35:enable='lt(t,{actor_length})'[music];"
+        f'[2:a]atrim=start=0:end={actor_length},asetpts=PTS-STARTPTS[v];'
+        '[music][v]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]',
         '-map', '0:v:0', '-map', '[a]', '-t', str(actual), '-c:v', 'copy',
         '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-ac', '2',
         '-movflags', '+faststart', 'final.mp4'])
@@ -136,9 +137,9 @@ def main():
         PROMPT = ('One continuous 8-second vertical 9:16 photorealistic smartphone shot. '
                   + production['character']['appearance'] + ', medium close-up. '
                   'Staged fictional product demo. No text, logos, captions or music. '
-                  'Seconds 0 to 4: silently reads a phone below frame, mouth closed. '
-                  'Second 4: looks up with a surprised smile. Seconds 5 to 6.2: says ONLY "No way!" '
-                  'in American English. Seconds 6.2 to 8: silent smile, lips closed. '
+                  'She looks at the camera and reacts immediately. '
+                  'During the first three seconds she says ONLY "No way!" '
+                  'in surprised American English, then smiles and glances at her phone. '
                   'No other words. No cuts. Consistent face and clothing.')
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}', core.JOB_ID):
         raise RuntimeError('Invalid job ID.')
@@ -158,8 +159,8 @@ def main():
                'The same woman throughout. The spoken No way! must be expressive, surprised, warm, '
                'with natural breath and intonation, synchronized to her mouth. '
                'No voice-over, no off-screen speaker, no background music. '
-               'Keep speech fully within seconds 5 to 6.2.')
-    spec = dict(version=2, model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
+               'Let the spoken phrase finish naturally, without cutting off any syllable. ')
+    spec = dict(version=3, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='native-generated-audio',
         reference_key=reference_key, reference_sha256=reference_sha,
         caption='Find Leela on Telegram: @leela_ru_bot')
@@ -200,7 +201,7 @@ def main():
         state.update(status='ready', video_sha256=actor.sha(final), video_info=info,
                      reference_sha256=reference_sha)
         store.put('state.json', json.dumps(state).encode())
-        print(f'Thought cards, full gameplay, one spoken reaction: {info["duration"]:.2f}s. Ready for Telegram.')
+        print(f'Complete actor reaction followed by full gameplay: {info["duration"]:.2f}s. Ready for Telegram.')
     finally:
         if (job / 'edit.log').exists():
             store.upload_file(job / 'edit.log')
@@ -213,3 +214,4 @@ if __name__ == '__main__':
     except Exception as exc:
         print('Stopped: ' + (str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__), flush=True)
         sys.exit(1)
+
