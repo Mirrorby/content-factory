@@ -91,12 +91,21 @@ def execute(config, phrases):
             jobs, count = plan_daily(config, phrases, character, state, channels, now())
             save()
             print(f"Reserved {count} new videos for {jobs[0]['target_date']} ({config['posting_timezone']}).", flush=True)
+            failures = []
             for job in jobs:
-                if job['status'] in ('planned','rendering'):
-                    # A separate actor performance for each video; no cross-job clip cache.
-                    render(ledger, {}, job, save)
-                elif job['status'] == 'ready':
-                    send_for_review(job, save)
+                try:
+                    if job['status'] in ('planned','rendering'):
+                        # A separate actor performance for each video; no cross-job clip cache.
+                        render(ledger, {}, job, save)
+                    elif job['status'] == 'ready':
+                        send_for_review(job, save)
+                except Exception as exc:
+                    failures.append(job['id'])
+                    job['generation_error'] = type(exc).__name__
+                    save()
+                    print('One daily video paused; continuing independent jobs.', flush=True)
+            if failures:
+                raise RuntimeError('Daily generation incomplete; saved failed jobs were not replaced or retried.')
             print('Daily pair delivered for Telegram review. Buffer requires approval.', flush=True)
     finally:
         ledger.store.client.delete_object(Bucket=ledger.store.bucket, Key=ledger.store.prefix+'lock.json')
