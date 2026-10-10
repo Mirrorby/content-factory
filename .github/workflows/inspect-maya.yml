@@ -33,6 +33,6 @@ jobs:
           subprocess.run(['ffmpeg','-y','-v','error','-ss','1','-i','actor.mp4','-frames:v','1','-vf','scale=360:-2','frame.jpg'],check=True)
           probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json','actor.mp4']))
           data={'frame_base64':base64.b64encode(Path('frame.jpg').read_bytes()).decode(),'streams':[{k:v for k,v in x.items() if k in ('width','height','codec_type','duration')} for x in probe['streams']]}
-          s.client.put_object(Bucket=s.bucket,Key=prefix+'inspection.json',Body=json.dumps(data).encode(),ContentType='application/json')
+          s.client.put_object(Bucket=s.bucket,Key=prefix+'inspection.json',Body=json.dumps(data).encode(),ContentType='application/octet-stream')
           print('Private inspection saved.')
           PY
