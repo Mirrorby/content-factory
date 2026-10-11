@@ -189,12 +189,18 @@ def main():
         if requested_model not in ('veo-3.1-lite-generate-preview', 'veo-3.1-fast-generate-preview'):
             raise RuntimeError('Unsupported actor recovery model.')
         actor.MODEL = requested_model
+    scene = production.get('scene') if production else None
+    if scene:
+        from factory.actor_scenes import video_prompt, IMAGE_MODEL
+        PROMPT = video_prompt(scene)
     spec = dict(version=4, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='native-generated-audio',
         reference_key=reference_key, reference_sha256=reference_sha,
         caption='Find Leela on Telegram: @leela_ru_bot')
     if production:
         spec.update(production=production)
+    if scene:
+        spec.update(scene_image_model=IMAGE_MODEL)
     fingerprint = hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     store.put('lock.json', b'{}', IfNoneMatch='*')
     try:
@@ -224,6 +230,10 @@ def main():
             if actor.sha(person) != reuse['sha256']:
                 raise RuntimeError('Character asset checksum mismatch.')
         else:
+            if scene:
+                from factory.actor_scenes import scene_reference
+                reference = scene_reference(store, job, state, reference, scene,
+                                            os.environ['GEMINI_API_KEY'].strip())
             person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip(), reference=reference)
         final, info = edit(job, person, source, None)
         store.upload_file(final)
