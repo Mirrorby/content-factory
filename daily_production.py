@@ -6,6 +6,7 @@ import os
 from production import (Ledger, PLATFORMS, load_private_channels, validate_live,
                         select_phrase, render, send_for_review, now)
 from factory.buffer_api import Buffer
+from factory.actor_scenes import select_scene
 
 
 def tomorrow(current, config):
@@ -43,6 +44,9 @@ def plan_daily(config, phrases, character, state, channels, current):
         spec = dict(character={k: character[k] for k in
                     ('id','appearance','voice','reference_image_key')},
                     phrase=phrase, source=config['source'], speed=config['speed'], actor_asset=None)
+        scene = select_scene(character, state)
+        if scene:
+            spec['scene'] = scene
         job = dict(id=f"daily-{character['id']}-{target:%Y%m%d}-{index+1:02d}",
                    status='planned', target_date=target.isoformat(), spec=spec,
                    created_at=current.isoformat(), deliveries={p: dict(status='waiting',
