@@ -103,10 +103,12 @@ def status_label(job):
 
 def main():
     tg = Telegram()
-    if tg.call('getWebhookInfo').get('url'):
-        raise RuntimeError('Bot has an active webhook; polling was not started.')
     ledger = Ledger()
     store = ledger.store
+    webhook = tg.call('getWebhookInfo').get('url')
+    owned = read_json(store, store.prefix+'telegram-webhook.json') or {}
+    if webhook and webhook != owned.get('url'):
+        raise RuntimeError('Bot has another active webhook; polling was not started.')
     try:
         store.put('lock.json', b'{}', IfNoneMatch='*')
     except ClientError as exc:
@@ -118,7 +120,7 @@ def main():
         state = ledger.read()
         save = lambda: ledger.save(state)
         cursor = read_json(store, store.prefix+'telegram-updates.json') or {'offset':0}
-        updates = tg.call('getUpdates', offset=cursor['offset'], timeout=0,
+        updates = [] if webhook else tg.call('getUpdates', offset=cursor['offset'], timeout=0,
                           allowed_updates=['callback_query'], limit=100)
         for update in updates:
             query = update.get('callback_query', {})
@@ -132,6 +134,20 @@ def main():
                 tg.acknowledge(query['id'])
             cursor['offset'] = update['update_id'] + 1
             store.put('telegram-updates.json', json.dumps(cursor).encode())
+        for char in state['characters'].values():
+            for job in char['jobs']:
+                decision = read_json(store, store.prefix+'review-decisions/'+job['id']+'.json')
+                if not decision or decision.get('sha256') != job.get('sha256') or job.get('review',{}).get('decision'):
+                    continue
+                receipt = read_json(store,'content-factory/v1/'+job['id']+'/telegram-delivery.json')
+                if (job['status'] not in ('ready','rejected') or decision.get('decision') not in ('approved','rejected')
+                    or not receipt or receipt.get('status') != 'sent' or receipt.get('chat_id') != tg.chat
+                    or receipt.get('bot_id') != tg.token.split(':')[0] or receipt.get('video_sha256') != job['sha256']
+                    or receipt.get('message_id') != decision.get('message_id')):
+                    continue
+                if decide(job,receipt,'a' if decision['decision']=='approved' else 'r'):
+                    job['review']['decided_at'] = decision['decided_at']
+                    save()
         config, _ = load_config()
         characters = [c for c in config['characters'] if c['enabled']]
         candidates = [j for c in state['characters'].values() for j in c['jobs']
