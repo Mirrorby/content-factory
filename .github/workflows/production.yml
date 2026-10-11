@@ -1,7 +1,7 @@
 name: Leela production and Buffer queues
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '17 8-15 * * *'
   workflow_dispatch:
     inputs:
       execute:
