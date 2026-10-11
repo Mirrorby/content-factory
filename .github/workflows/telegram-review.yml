@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: [.github/workflows/telegram-review.yml, review_telegram.py, tests/test_review_telegram.py]
+    paths: [.github/workflows/telegram-review.yml, review_telegram.py, tests/test_review_telegram.py, workers/telegram-review/worker.mjs, workers/telegram-review/worker.test.mjs]
 permissions:
   contents: read
 concurrency:
@@ -23,6 +23,8 @@ jobs:
       - run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
       - name: Test review authorization
         run: python -m unittest discover -s tests -p test_review_telegram.py -v
+      - name: Test immediate review and duplicate prevention
+        run: node --test workers/telegram-review/worker.test.mjs
       - name: Process review buttons
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
