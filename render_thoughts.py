@@ -184,6 +184,11 @@ def main():
                   'Let the complete phrase finish naturally, then she smiles. '
                   'Natural quiet room ambience. Frame her as a vertical medium close-up. '
                   'A single shot with no on-screen text or logos.')
+    if production and production.get('actor_model'):
+        requested_model = production['actor_model']
+        if requested_model not in ('veo-3.1-lite-generate-preview', 'veo-3.1-fast-generate-preview'):
+            raise RuntimeError('Unsupported actor recovery model.')
+        actor.MODEL = requested_model
     spec = dict(version=4, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='native-generated-audio',
         reference_key=reference_key, reference_sha256=reference_sha,
