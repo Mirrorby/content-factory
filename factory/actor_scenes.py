@@ -31,8 +31,9 @@ def scene_description(scene):
     return ' '.join(scene[k] for k in ('setting', 'outfit', 'framing'))
 
 
-def video_prompt(scene):
-    return ('One continuous eight-second vertical smartphone video of the same fictional adult woman '
+def video_prompt(scene, seconds=8):
+    duration = {4: 'four', 6: 'six', 8: 'eight'}[seconds]
+    return (f'One continuous {duration}-second vertical smartphone video of the same fictional adult woman '
             'shown in the supplied first frame. Keep her face, age, hair, outfit and setting consistent '
             'with that first frame. ' + scene_description(scene) + ' ' + scene['reaction'] + ' '
             'During the first three seconds she says only "No way!" in natural American English, '
