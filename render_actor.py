@@ -63,7 +63,9 @@ def download_video(uri, target, key):
     raise RuntimeError('Too many download redirects.')
 
 
-def actor_clip(store, job, state, index, key, reference=None):
+def actor_clip(store, job, state, index, key, reference=None, seconds=8):
+    if type(seconds) is not int or seconds not in (4, 6, 8):
+        raise RuntimeError('Actor duration must be 4, 6 or 8 seconds.')
     item = state['clips'][index]
     name = ['intro.mp4', 'outro.mp4'][index]
     target = job / name
@@ -79,12 +81,12 @@ def actor_clip(store, job, state, index, key, reference=None):
         if reference:
             instance['image'] = {'bytesBase64Encoded': base64.b64encode(reference.read_bytes()).decode(), 'mimeType': 'image/png'}
         payload = {'instances': [instance], 'parameters': {'sampleCount': 1,
-            'durationSeconds': 8, 'aspectRatio': '9:16', 'resolution': '720p',
+            'durationSeconds': seconds, 'aspectRatio': '9:16', 'resolution': '720p',
             'personGeneration': 'allow_adult' if reference else 'allow_all'}}
         # Persist BEFORE POST: a timeout/unknown result must never spend again.
         item['status'] = 'pending'
         save()
-        print(f'Actor clip {index + 1}/2: one Veo Lite request, 8 seconds.', flush=True)
+        print(f'Actor clip {index + 1}: one {MODEL} request, {seconds} seconds.', flush=True)
         operation = checked(requests.post(BASE + f'models/{MODEL}:predictLongRunning',
             headers={'x-goog-api-key': key}, json=payload, timeout=(30, 180), allow_redirects=False))
         # Save the operation before polling so a later run can resume it.
@@ -115,7 +117,7 @@ def actor_clip(store, job, state, index, key, reference=None):
                 raise RuntimeError('Veo returned no video; response saved privately. No retry.')
             download_video(samples[0]['video']['uri'], target, key)
             info = media_info(target)
-            if not info['audio'] or info['duration'] < 7.5:
+            if not info['audio'] or abs(info['duration'] - seconds) > .5:
                 raise RuntimeError('Generated actor clip has missing audio or unexpected duration.')
             store.upload_file(target)
             item.update(status='ready', sha256=sha(target))
