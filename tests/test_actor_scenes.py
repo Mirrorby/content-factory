@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 from PIL import Image
 from factory.actor_scenes import scene_reference, video_prompt
+import render_actor as actor
 
 
 class SceneImageTests(unittest.TestCase):
@@ -59,6 +60,45 @@ class SceneImageTests(unittest.TestCase):
         self.assertIn('Quiet cafe.',prompt)
         self.assertIn('synchronized to her lips',prompt)
         self.assertIn('No way!',prompt)
+        self.assertIn('eight-second', prompt)
+        self.assertIn('six-second', video_prompt(self.scene, seconds=6))
+
+
+class ActorDurationTests(unittest.TestCase):
+    def test_requested_duration_audio_and_pending_safety(self):
+        for seconds, duration, audio, valid in ((6, 6, True, True), (8, 8, True, True),
+                                                (6, 8, True, False), (6, 5, True, False),
+                                                (6, 6, False, False)):
+            with self.subTest(seconds=seconds, duration=duration, audio=audio), tempfile.TemporaryDirectory() as temp:
+                state = {'clips': [{'status': 'new'}]}
+                store = Mock()
+                response = Mock()
+                response.json.return_value = {'name': 'operations/test'}
+                done = {'done': True, 'response': {'generateVideoResponse': {
+                    'generatedSamples': [{'video': {'uri': 'https://example.com/clip'}}]}}}
+                def posted(*args, **kwargs):
+                    self.assertEqual(state['clips'][0]['status'], 'pending')
+                    return response
+                with patch.object(actor.requests, 'post', side_effect=posted) as post, \
+                     patch.object(actor.requests, 'get'), \
+                     patch.object(actor, 'checked', side_effect=[{'name': 'operations/test'}, done]), \
+                     patch.object(actor, 'download_video'), \
+                     patch.object(actor, 'media_info', return_value={'audio': audio, 'duration': duration}), \
+                     patch.object(actor, 'sha', return_value='hash'):
+                    if valid:
+                        actor.actor_clip(store, Path(temp), state, 0, 'test', seconds=seconds)
+                        self.assertEqual(state['clips'][0]['status'], 'ready')
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, 'unexpected duration'):
+                            actor.actor_clip(store, Path(temp), state, 0, 'test', seconds=seconds)
+                        store.upload_file.assert_not_called()
+                    self.assertEqual(post.call_args.kwargs['json']['parameters']['durationSeconds'], seconds)
+        with tempfile.TemporaryDirectory() as temp, \
+             patch.object(actor, 'read_remote', return_value=None), \
+             patch.object(actor.requests, 'post') as post:
+            with self.assertRaisesRegex(RuntimeError, 'unknown'):
+                actor.actor_clip(Mock(), Path(temp), {'clips': [{'status': 'pending'}]}, 0, 'test', seconds=6)
+            post.assert_not_called()
 
 
 if __name__ == '__main__':
