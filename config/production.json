@@ -24,7 +24,65 @@
         "tiktok": "",
         "instagram": ""
       },
-      "reference_image_key": "content-factory/assets/leela/maya-reference.png"
+      "reference_image_key": "content-factory/assets/leela/maya-reference.png",
+      "scenes": [
+        {
+          "id": "cafe",
+          "setting": "Seated at a quiet neighborhood cafe table, blurred coffee bar behind her, soft morning light.",
+          "outfit": "Wearing a pale blue casual shirt.",
+          "framing": "Eye-level three-quarter chest-up shot; face clearly visible, cup near the bottom of the frame.",
+          "reaction": "She glances up from her phone with amused disbelief and lifts one eyebrow."
+        },
+        {
+          "id": "kitchen",
+          "setting": "Standing at a bright home kitchen counter, plants and pale cabinets in the background, morning daylight.",
+          "outfit": "Wearing a plain white T-shirt and an open olive cardigan.",
+          "framing": "Frontal waist-up shot, a comfortable distance from the camera.",
+          "reaction": "She pauses while holding her phone and gives a warm surprised little laugh."
+        },
+        {
+          "id": "park",
+          "setting": "Seated on a quiet park bench, leafy trees behind her, soft afternoon daylight.",
+          "outfit": "Wearing a light denim jacket over a neutral top.",
+          "framing": "Eye-level chest-up shot from slightly to her left, open green background.",
+          "reaction": "She looks from her phone to the camera, eyes widening with delighted surprise."
+        },
+        {
+          "id": "desk",
+          "setting": "Seated at a home workspace with books and a closed laptop, gentle side daylight.",
+          "outfit": "Wearing a muted burgundy long-sleeve top.",
+          "framing": "Three-quarter medium close-up with her face turned towards the camera.",
+          "reaction": "She leans back a little with a knowing smile and surprised eyebrows."
+        },
+        {
+          "id": "sofa",
+          "setting": "Sitting comfortably on a soft gray living-room sofa, warm floor lamp in the background, early evening.",
+          "outfit": "Wearing a relaxed oatmeal sweatshirt.",
+          "framing": "Frontal chest-up shot, slightly handheld smartphone feel.",
+          "reaction": "She tilts her head, then breaks into an amused surprised smile."
+        },
+        {
+          "id": "balcony",
+          "setting": "Standing on a safe residential balcony beside potted plants, distant city softly blurred, golden-hour daylight.",
+          "outfit": "Wearing a soft sage green blouse.",
+          "framing": "Eye-level waist-up shot from a slight angle, face clearly visible.",
+          "reaction": "She looks up from her phone, lightly shakes her head in playful disbelief."
+        },
+        {
+          "id": "bookstore",
+          "setting": "Standing beside shelves in a quiet cozy bookstore, warm indoor lighting.",
+          "outfit": "Wearing a charcoal knit top and a light tan jacket.",
+          "framing": "Eye-level chest-up shot, books softly blurred behind her.",
+          "reaction": "She draws the phone slightly closer, then looks at the camera with a small surprised grin."
+        },
+        {
+          "id": "terrace",
+          "setting": "Seated at a quiet outdoor terrace table under soft shade, greenery in the background, late morning.",
+          "outfit": "Wearing a cream linen shirt.",
+          "framing": "Three-quarter waist-up shot, relaxed posture and clear view of her face.",
+          "reaction": "She raises her eyebrows, smiles with genuine surprise, then relaxes her shoulders."
+        }
+      ]
     },
     {
       "id": "alex",
