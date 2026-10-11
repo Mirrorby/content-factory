@@ -1,0 +1,12 @@
+{
+  "name": "leela-video-review",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {"enabled": true},
+  "r2_buckets": [
+    {"binding": "PRIVATE", "bucket_name": "content-factory-media"},
+    {"binding": "PUBLIC", "bucket_name": "content-factory-public"}
+  ],
+  "triggers": {"crons": ["* * * * *"]}
+}
