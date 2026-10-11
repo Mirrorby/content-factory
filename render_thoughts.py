@@ -176,6 +176,14 @@ def main():
                'with natural breath and intonation, synchronized to her mouth. '
                'No voice-over, no off-screen speaker, no background music. '
                'Let the spoken phrase finish naturally, without cutting off any syllable. ')
+    if production and production.get('audio_recovery'):
+        PROMPT = ('One continuous eight-second portrait video of the fictional adult woman in the reference. '
+                  'Keep her face, hair, cream sweater and warm room consistent with the reference. '
+                  'She looks towards the camera, raises her eyebrows and says "No way!" '
+                  'in a warm surprised American voice with synchronized lips. '
+                  'Let the complete phrase finish naturally, then she smiles. '
+                  'Natural quiet room ambience. Frame her as a vertical medium close-up. '
+                  'A single shot with no on-screen text or logos.')
     spec = dict(version=4, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='native-generated-audio',
         reference_key=reference_key, reference_sha256=reference_sha,
