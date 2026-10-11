@@ -37,13 +37,17 @@ def plan_daily(config, phrases, character, state, channels, current):
         if len(existing) != 2:
             raise RuntimeError('Incomplete daily reservation; inspect before generating.')
         return existing, 0
+    actor_seconds = config.get('actor_seconds', 8)
+    if type(actor_seconds) is not int or actor_seconds not in (4, 6, 8):
+        raise RuntimeError('Actor duration must be 4, 6 or 8 seconds.')
     jobs = []
     for index in range(2):
         phrase = select_phrase(phrases, character['theme'], state['usage'])
         state['usage'][phrase['id']] = state['usage'].get(phrase['id'], 0) + 1
         spec = dict(character={k: character[k] for k in
                     ('id','appearance','voice','reference_image_key')},
-                    phrase=phrase, source=config['source'], speed=config['speed'], actor_asset=None)
+                    phrase=phrase, source=config['source'], speed=config['speed'], actor_asset=None,
+                    actor_seconds=actor_seconds)
         scene = select_scene(character, state)
         if scene:
             spec['scene'] = scene
