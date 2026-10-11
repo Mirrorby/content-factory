@@ -12,6 +12,9 @@ on:
     branches: [main]
     paths:
       - daily-start.json
+      - factory/actor_scenes.py
+      - render_thoughts.py
+      - tests/test_actor_scenes.py
       - daily_production.py
       - tests/test_daily_production.py
       - production.py
@@ -37,9 +40,11 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies
-        run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7
+        run: pip install boto3==1.40.45 requests==2.32.5 edge-tts==7.2.7 Pillow==11.3.0
       - name: Test queue accounting and recovery
-        run: python -m unittest discover -s tests -p 'test_*production.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_*production.py' -v
+          python -m unittest discover -s tests -p 'test_actor_scenes.py' -v
       - name: Preview production plan
         run: python production.py
       - name: Install video tools
