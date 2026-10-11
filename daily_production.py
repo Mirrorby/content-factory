@@ -71,6 +71,42 @@ def check_assets(ledger, config, character):
     print('Private reference PNG and gameplay are available.', flush=True)
 
 
+def recover_audio_failure(ledger, state, job, save):
+    """One replacement only for Google's explicit uncharged audio failure."""
+    if job.get('audio_recovery') or job['status'] != 'rendering':
+        return None
+    if any(d['status'] != 'waiting' for d in job['deliveries'].values()):
+        return None
+    from review_telegram import read_json
+    prefix = 'content-factory/v1/' + job['id'] + '/'
+    renderer = read_json(ledger.store, prefix + 'state.json') or {}
+    response = read_json(ledger.store, prefix + 'intro.mp4.response.json') or {}
+    if not retryable_audio_failure(renderer, response):
+        return None
+    replacement = json.loads(json.dumps(job))
+    replacement.update(id=job['id']+'-a2', status='planned', audio_recovery=True,
+                       replaces=job['id'])
+    replacement.pop('generation_error', None)
+    replacement['spec']['audio_recovery'] = True
+    replacement['spec']['actor_asset'] = None
+    job['status'] = 'generation_failed'
+    state.setdefault('archive', []).append(job)
+    state['jobs'][state['jobs'].index(job)] = replacement
+    save()
+    return replacement
+
+
+def retryable_audio_failure(renderer, response):
+    clips = renderer.get('clips', [])
+    generated = response.get('response', {}).get('generateVideoResponse', {})
+    reasons = generated.get('raiMediaFilteredReasons', [])
+    return (len(clips) == 1 and clips[0].get('status') == 'blocked_or_empty'
+            and response.get('done') is True and not response.get('error')
+            and not generated.get('generatedSamples') and len(reasons) == 1
+            and reasons[0].startswith('We encountered an issue with the audio for your prompt')
+            and 'You have not been charged for this attempt.' in reasons[0])
+
+
 def execute(config, phrases):
     characters = [c for c in config['characters'] if c['enabled']]
     ledger = Ledger()
@@ -100,6 +136,15 @@ def execute(config, phrases):
                     elif job['status'] == 'ready':
                         send_for_review(job, save)
                 except Exception as exc:
+                    replacement = recover_audio_failure(ledger, state, job, save)
+                    if replacement:
+                        print('Confirmed uncharged audio failure: trying one revised audio request.', flush=True)
+                        try:
+                            render(ledger, {}, replacement, save)
+                            continue
+                        except Exception as recovery_exc:
+                            job = replacement
+                            exc = recovery_exc
                     failures.append(job['id'])
                     job['generation_error'] = type(exc).__name__
                     save()
