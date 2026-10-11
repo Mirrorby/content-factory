@@ -1,7 +1,7 @@
 # Daily production
 
 Production reserves two distinct Maya jobs for tomorrow by the Europe/Minsk calendar, using America/New_York publishing slots.
-The workflow runs at 10:00 UTC daily (13:00 Minsk); GitHub cron may run late.
+Generation/recovery checks are scheduled at minute 17 of each hour from 08:00 through 15:00 UTC (11:17 through 18:17 Minsk). GitHub cron can delay or drop runs; these are scheduled attempts, not a delivery-time guarantee. All attempts share the same two daily job IDs; completed media and Telegram receipts are reused.
 The first pair can be started via workflow_dispatch with execute=true.
 A rerun on the same Minsk date resumes the same two jobs without a new reservation.
 Each job has its own photo-based actor generation, phrase and frozen per-channel
