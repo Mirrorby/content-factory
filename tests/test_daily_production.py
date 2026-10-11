@@ -32,6 +32,21 @@ class DailyTests(unittest.TestCase):
             plan_daily(self.config,self.phrases,self.character,self.state,self.channels,current)
         self.assertEqual(len(self.state['jobs']),4)
         self.assertEqual(len({j['id'] for j in self.state['jobs']}),4)
+    def test_scene_cycle_snapshots_and_retries(self):
+        from datetime import timedelta
+        scene_count = len(self.character['scenes'])
+        for day in range(scene_count // 2):
+            jobs, _ = plan_daily(self.config,self.phrases,self.character,self.state,
+                                self.channels,self.current + timedelta(days=day))
+            self.assertNotEqual(jobs[0]['spec']['scene']['id'], jobs[1]['spec']['scene']['id'])
+        scenes = [j['spec']['scene']['id'] for j in self.state['jobs']]
+        self.assertEqual(len(scenes), len(set(scenes)))
+        usage = copy.deepcopy(self.state['scene_usage'])
+        plan_daily(self.config,self.phrases,self.character,self.state,self.channels,self.current)
+        self.assertEqual(self.state['scene_usage'], usage)
+        saved_setting = self.state['jobs'][0]['spec']['scene']['setting']
+        self.character['scenes'][0]['setting'] = 'Changed config'
+        self.assertEqual(self.state['jobs'][0]['spec']['scene']['setting'], saved_setting)
     def test_posting_timezone_and_dst(self):
         self.assertEqual(tomorrow(datetime(2026,10,10,1,tzinfo=timezone.utc),self.config),date(2026,10,11))
         self.assertEqual(slots(date(2026,11,1),self.channels['youtube'])[0],'2026-11-01T13:45:00Z')
