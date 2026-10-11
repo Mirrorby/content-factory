@@ -50,4 +50,34 @@ class DailyTests(unittest.TestCase):
         api.create.assert_not_called()
         api.queue.assert_not_called()
         self.assertTrue(all(d['status']=='expired' for d in job['deliveries'].values()))
+
+    def test_audio_recovery_only_for_confirmed_uncharged_failure(self):
+        from daily_production import retryable_audio_failure
+        renderer = {'clips':[{'status':'blocked_or_empty'}]}
+        reason = ('We encountered an issue with the audio for your prompt. '
+                  'You have not been charged for this attempt.')
+        response = {'done':True,'response':{'generateVideoResponse':{
+            'raiMediaFilteredReasons':[reason]}}}
+        self.assertTrue(retryable_audio_failure(renderer,response))
+        self.assertFalse(retryable_audio_failure({'clips':[{'status':'pending'}]},response))
+        self.assertFalse(retryable_audio_failure(renderer,{'done':False}))
+        self.assertFalse(retryable_audio_failure(renderer,{'done':True,'error':{'code':500}}))
+        response['response']['generateVideoResponse']['raiMediaFilteredReasons']=['Content safety rejection']
+        self.assertFalse(retryable_audio_failure(renderer,response))
+    def test_audio_recovery_preserves_slots_and_has_only_one_attempt(self):
+        from daily_production import recover_audio_failure
+        jobs,_=plan_daily(self.config,self.phrases,self.character,self.state,self.channels,self.current)
+        job=jobs[0];job['status']='rendering'
+        renderer={'clips':[{'status':'blocked_or_empty'}]}
+        response={'done':True,'response':{'generateVideoResponse':{'raiMediaFilteredReasons':[
+            'We encountered an issue with the audio for your prompt. You have not been charged for this attempt.']}}}
+        with patch('review_telegram.read_json',side_effect=[renderer,response]):
+            replacement=recover_audio_failure(Mock(),self.state,job,lambda:None)
+        self.assertEqual(len(self.state['jobs']),2)
+        self.assertEqual(replacement['deliveries'],job['deliveries'])
+        self.assertEqual(replacement['spec']['phrase'],job['spec']['phrase'])
+        self.assertEqual(self.state['archive'][0]['id'],job['id'])
+        replacement['status']='rendering'
+        self.assertIsNone(recover_audio_failure(Mock(),self.state,replacement,lambda:None))
+
 if __name__=='__main__': unittest.main()
