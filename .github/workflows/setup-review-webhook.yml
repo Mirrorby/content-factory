@@ -1,0 +1,45 @@
+name: Setup immediate Telegram review
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/setup-review-webhook.yml, workers/telegram-review/setup-trigger.json]
+permissions:
+  contents: read
+concurrency:
+  group: content-factory-generator
+  cancel-in-progress: false
+jobs:
+  setup:
+    if: contains(github.event.head_commit.message, '[bootstrap-review-webhook]') || contains(github.event.head_commit.message, '[activate-review-webhook]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install boto3==1.40.45 requests==2.32.5
+      - name: Bootstrap private settings
+        if: contains(github.event.head_commit.message, '[bootstrap-review-webhook]')
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUFFER_MAYA_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
+        run: PYTHONPATH=. python workers/telegram-review/setup.py bootstrap
+      - name: Activate webhook
+        if: contains(github.event.head_commit.message, '[activate-review-webhook]')
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUFFER_MAYA_API_KEY: ${{ secrets.BUFFER_MAYA_API_KEY }}
+          BUFFER_MEDIA_BASE_URL: ${{ vars.BUFFER_MEDIA_BASE_URL }}
+        run: PYTHONPATH=. python workers/telegram-review/setup.py activate
