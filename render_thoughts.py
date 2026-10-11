@@ -146,11 +146,15 @@ def edit(job, person, gameplay, voice):
 def main():
     global SOURCE, SPEED, PROMPT, CARDS
     production = None
+    actor_seconds = 8
     if os.environ.get('VIDEO_SPEC_PATH'):
         production = json.loads(Path(os.environ['VIDEO_SPEC_PATH']).read_text())
+        actor_seconds = production.get('actor_seconds', 8)
+        if type(actor_seconds) is not int or actor_seconds not in (4, 6, 8):
+            raise RuntimeError('Actor duration must be 4, 6 or 8 seconds.')
         SOURCE, SPEED = production['source'], production['speed']
         CARDS = {key: production['phrase'][key] for key in ('hook', 'game', 'reaction', 'cta')}
-        PROMPT = ('One continuous 8-second vertical 9:16 photorealistic smartphone shot. '
+        PROMPT = (f'One continuous {actor_seconds}-second vertical 9:16 photorealistic smartphone shot. '
                   + production['character']['appearance'] + ', medium close-up. '
                   'Staged fictional product demo. No text, logos, captions or music. '
                   'She looks at the camera and reacts immediately. '
@@ -177,7 +181,8 @@ def main():
                'No voice-over, no off-screen speaker, no background music. '
                'Let the spoken phrase finish naturally, without cutting off any syllable. ')
     if production and production.get('audio_recovery'):
-        PROMPT = ('One continuous eight-second portrait video of the fictional adult woman in the reference. '
+        duration_word = {4: 'four', 6: 'six', 8: 'eight'}[actor_seconds]
+        PROMPT = (f'One continuous {duration_word}-second portrait video of the fictional adult woman in the reference. '
                   'Keep her face, hair, cream sweater and warm room consistent with the reference. '
                   'She looks towards the camera, raises her eyebrows and says "No way!" '
                   'in a warm surprised American voice with synchronized lips. '
@@ -192,7 +197,7 @@ def main():
     scene = production.get('scene') if production else None
     if scene:
         from factory.actor_scenes import video_prompt, IMAGE_MODEL
-        PROMPT = video_prompt(scene)
+        PROMPT = video_prompt(scene, seconds=actor_seconds)
     spec = dict(version=4, edit_layout='full-actor-then-gameplay', model=actor.MODEL, prompt=PROMPT, source=SOURCE, speed=SPEED,
         max_requests=1, speech='No way!', voice='native-generated-audio',
         reference_key=reference_key, reference_sha256=reference_sha,
@@ -234,7 +239,8 @@ def main():
                 from factory.actor_scenes import scene_reference
                 reference = scene_reference(store, job, state, reference, scene,
                                             os.environ['GEMINI_API_KEY'].strip())
-            person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip(), reference=reference)
+            person = actor.actor_clip(store, job, state, 0, os.environ['GEMINI_API_KEY'].strip(),
+                                      reference=reference, seconds=actor_seconds)
         final, info = edit(job, person, source, None)
         store.upload_file(final)
         state.update(status='ready', video_sha256=actor.sha(final), video_info=info,
