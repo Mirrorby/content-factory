@@ -48,12 +48,12 @@ export function label(job) {
 async function api(url, data, headers = {}) {
   const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json',...headers},
     body:JSON.stringify(data), redirect:'error', signal:AbortSignal.timeout(20000)});
-  if (!response.ok) throw new Error('Provider HTTP failure');
+  if (!response.ok) throw new Error('ProviderHTTP_' + response.status);
   return response.json();
 }
 async function telegram(c, method, data) {
   const r = await api('https://api.telegram.org/bot'+c.token+'/'+method, data);
-  if (!r.ok) throw new Error('Telegram API failure');
+  if (!r.ok) throw new Error('TelegramAPI_' + r.error_code);
   return r.result;
 }
 async function keyboard(c, job, text) {
@@ -146,15 +146,16 @@ export async function drain(env) {
       if (!job.review?.decision) continue;
       if (job.review.decision === 'approved' && Object.values(job.deliveries).some(d=>d.status === 'waiting') &&
           !Object.values(job.deliveries).some(d=>['unknown','error'].includes(d.status)) &&
-          Date.parse(job.review.next_delivery_check_at || '1970-01-01') <= Date.now()) {
+          (job.review.delivery_error === 'WorkerDeliveryError' && job.review.delivery_diagnostics_version !== 1 || Date.parse(job.review.next_delivery_check_at || '1970-01-01') <= Date.now())) {
+        job.review.delivery_diagnostics_version=1;
         job.review.next_delivery_check_at = new Date(Date.now()+6*3600000).toISOString(); await save();
         try { if (!checkedChannels) { await preflight(c); checkedChannels=true; } await deliver(env,c,job,save); delete job.review.delivery_error; }
-        catch { job.review.delivery_error='WorkerDeliveryError'; }
+        catch (e) { job.review.delivery_error=/^(ProviderHTTP_\d+|Buffer GraphQL failure|Channel validation failed|Public video unavailable|Video unavailable)$/.test(e.message) ? e.message : 'WorkerDeliveryError'; }
         await save();
       }
       const text = label(job);
       if (job.review.displayed_label !== text) {
-        try { await keyboard(c,job,text); job.review.displayed_label=text; await save(); } catch { /* next cron repairs label */ }
+        try { await keyboard(c,job,text); job.review.displayed_label=text; await save(); } catch (e) { job.review.label_error=/^TelegramAPI_\d+$/.test(e.message)?e.message:'LabelUpdateError'; await save(); }
       }
     }
   } finally { await env.PRIVATE.delete(LOCK); }
