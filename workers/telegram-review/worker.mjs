@@ -47,7 +47,7 @@ export function label(job) {
 
 async function api(url, data, headers = {}) {
   const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json',...headers},
-    body:JSON.stringify(data), redirect:'error', signal:AbortSignal.timeout(20000)});
+    body:JSON.stringify(data), redirect:'manual', signal:AbortSignal.timeout(20000)});
   if (!response.ok) throw new Error('ProviderHTTP_' + response.status);
   return response.json();
 }
@@ -99,7 +99,7 @@ async function publicVideo(env, c, job, save) {
     const source = await env.PRIVATE.get(job.video_key);
     if (!source || source.size <= 0 || source.size > 50000000) throw new Error('Video unavailable');
     await env.PUBLIC.put(job.public_key, source.body, {httpMetadata:{contentType:'video/mp4',cacheControl:'public, max-age=31536000, immutable'},customMetadata:{sha256:job.sha256}});
-    const response = await fetch(c.media_base+'/'+job.public_key,{method:'HEAD',redirect:'error',signal:AbortSignal.timeout(15000)});
+    const response = await fetch(c.media_base+'/'+job.public_key,{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(15000)});
     if (!response.ok || !response.headers.get('content-type')?.includes('video/mp4')) throw new Error('Public video unavailable');
     job.media_ready = true; await save();
   }
@@ -146,11 +146,11 @@ export async function drain(env) {
       if (!job.review?.decision) continue;
       if (job.review.decision === 'approved' && Object.values(job.deliveries).some(d=>d.status === 'waiting') &&
           !Object.values(job.deliveries).some(d=>['unknown','error'].includes(d.status)) &&
-          (job.review.delivery_error === 'WorkerDeliveryError' && job.review.delivery_diagnostics_version !== 1 || Date.parse(job.review.next_delivery_check_at || '1970-01-01') <= Date.now())) {
-        job.review.delivery_diagnostics_version=1;
+          (job.review.delivery_error === 'WorkerDeliveryError' && job.review.delivery_diagnostics_version !== 3 || Date.parse(job.review.next_delivery_check_at || '1970-01-01') <= Date.now())) {
+        job.review.delivery_diagnostics_version=3;
         job.review.next_delivery_check_at = new Date(Date.now()+6*3600000).toISOString(); await save();
         try { if (!checkedChannels) { await preflight(c); checkedChannels=true; } await deliver(env,c,job,save); delete job.review.delivery_error; }
-        catch (e) { job.review.delivery_error=/^(ProviderHTTP_\d+|Buffer GraphQL failure|Channel validation failed|Public video unavailable|Video unavailable)$/.test(e.message) ? e.message : 'WorkerDeliveryError'; }
+        catch (e) { job.review.delivery_diagnostic={name:e.name,message:String(e.message).replaceAll(c.token,'[secret]').replaceAll(c.buffer_key,'[secret]').replace(/https?:\/\/[^\s]+/g,'[url]').slice(0,300)}; job.review.delivery_error=/^(ProviderHTTP_\d+|Buffer GraphQL failure|Channel validation failed|Public video unavailable|Video unavailable)$/.test(e.message) ? e.message : 'WorkerDeliveryError'; }
         await save();
       }
       const text = label(job);
