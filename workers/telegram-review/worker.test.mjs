@@ -35,6 +35,7 @@ test('Three platforms scheduled once; unknown persisted before each mutation',as
   decide(j,{decision:'approved',sha256:'hash',message_id:7,decided_at:'now'});
   const original=globalThis.fetch; const mutations=[]; const saved=[];
   globalThis.fetch=async(_url,init)=>{
+    assert.equal(init.redirect,'manual', 'Workers supports manual redirects; HTTP failures still stop delivery');
     const body=JSON.parse(init.body);
     if(body.query.startsWith('query'))return Response.json({data:{posts:{edges:[],pageInfo:{hasNextPage:false}}}});
     const input=body.variables.input; const platform=Object.keys(input.metadata)[0];
