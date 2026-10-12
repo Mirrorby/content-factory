@@ -62,11 +62,12 @@ class SceneImageTests(unittest.TestCase):
         self.assertIn('No way!',prompt)
         self.assertIn('eight-second', prompt)
         self.assertIn('six-second', video_prompt(self.scene, seconds=6))
+        self.assertIn('four-second', video_prompt(self.scene, seconds=4))
 
 
 class ActorDurationTests(unittest.TestCase):
     def test_requested_duration_audio_and_pending_safety(self):
-        for seconds, duration, audio, valid in ((6, 6, True, True), (8, 8, True, True),
+        for seconds, duration, audio, valid in ((4, 4, True, True), (6, 6, True, True), (8, 8, True, True),
                                                 (6, 8, True, False), (6, 5, True, False),
                                                 (6, 6, False, False)):
             with self.subTest(seconds=seconds, duration=duration, audio=audio), tempfile.TemporaryDirectory() as temp:
