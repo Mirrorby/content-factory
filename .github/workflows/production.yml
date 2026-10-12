@@ -1,7 +1,5 @@
 name: Leela production and Buffer queues
 on:
-  schedule:
-    - cron: '17 8-15 * * *'
   workflow_dispatch:
     inputs:
       execute:
@@ -48,10 +46,10 @@ jobs:
       - name: Preview production plan
         run: python production.py
       - name: Install video tools
-        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[start-daily-pair]'))
+        if: (github.event_name == 'workflow_dispatch' && inputs.execute) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[start-daily-pair]'))
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
       - name: Generate and refill Buffer
-        if: (github.event_name == 'schedule' && vars.PRODUCTION_ENABLED != 'false') || (github.event_name == 'workflow_dispatch' && inputs.execute) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[start-daily-pair]'))
+        if: (github.event_name == 'workflow_dispatch' && inputs.execute) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[start-daily-pair]'))
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
