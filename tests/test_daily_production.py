@@ -27,11 +27,11 @@ class DailyTests(unittest.TestCase):
         self.assertEqual(again,jobs)
         self.assertEqual(len(self.state['jobs']),2)
         self.assertTrue(all(j['spec']['actor_asset'] is None for j in jobs))
-        self.assertTrue(all(j['spec']['actor_seconds'] == 6 for j in jobs))
+        self.assertTrue(all(j['spec']['actor_seconds'] == 4 for j in jobs))
         self.config['actor_seconds'] = 8
         frozen, count = plan_daily(self.config,self.phrases,self.character,self.state,self.channels,self.current)
         self.assertEqual(count, 0)
-        self.assertTrue(all(j['spec']['actor_seconds'] == 6 for j in frozen))
+        self.assertTrue(all(j['spec']['actor_seconds'] == 4 for j in frozen))
     def test_next_day_adds_only_two(self):
         for current in (self.current, datetime(2026,10,10,10,tzinfo=timezone.utc)):
             plan_daily(self.config,self.phrases,self.character,self.state,self.channels,current)
