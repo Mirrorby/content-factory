@@ -46,3 +46,30 @@ python -m unittest discover -s tests -p 'test_actor_scenes.py' -v
 ```
 
 Проверяются две дневные резервации, повторные запуски, часовые пояса и DST, циклы сцен и неизменность снимков, сохранение изображения после сбоя без повторного платного запроса, ограничения очереди и неопределённые отправки. Эти проверки не заменяют просмотр нового ролика и проверку фактической публикации.
+
+## Внешний запуск через cron-job.org
+
+Workflow уже принимает workflow_dispatch с execute=true. Настройка внешнего задания подготовлена; пока оно не создано и не проверено в cron-job.org, внешний запуск не считается активным. Встроенный cron GitHub остаётся резервным.
+
+1. Создать GitHub fine-grained personal access token: resource owner Mirrorby, Only select repositories → content-factory, Repository permissions → Actions: Read and write. Остальные права не добавлять; следить за сроком действия токена.
+2. В cron-job.org создать задание Leela daily pair. Часовой пояс Europe/Minsk, расширенное расписание: минута 17, часы 11–18 включительно, все дни. Эквивалент cron: `17 11-18 * * *`.
+3. URL: `https://api.github.com/repos/Mirrorby/content-factory/actions/workflows/production.yml/dispatches`.
+4. Метод POST; заголовки:
+
+| Заголовок | Значение |
+| --- | --- |
+| Authorization | Bearer YOUR_FINE_GRAINED_TOKEN |
+| Accept | application/vnd.github+json |
+| Content-Type | application/json |
+| X-GitHub-Api-Version | 2026-03-10 |
+| User-Agent | content-factory-cron |
+
+Тело запроса:
+
+```json
+{"ref":"main","inputs":{"execute":true}}
+```
+
+Токен вводится только в приватном интерфейсе cron-job.org, не в код, описание задания или чат. Он даёт сервису возможность управлять Actions выбранного репозитория. Включить уведомление об ошибке/автоматическом отключении задания. HTTP 2xx подтверждает принятие запуска, но не успех генерации: проверять Actions и доставку пары в Telegram. Повторные запросы используют сохранённые ID дневной пары; concurrency не допускает параллельные генераторы.
+
+Тестировать через Test run и проверить новый workflow_dispatch в GitHub Actions. После проверки можно убрать schedule из production.yml. Для остановки внешних запусков выключить задание cron-job.org (workflow_dispatch сейчас не зависит от PRODUCTION_ENABLED).
