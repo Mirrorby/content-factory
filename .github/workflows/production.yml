@@ -14,6 +14,8 @@ on:
       - render_thoughts.py
       - tests/test_actor_scenes.py
       - daily_production.py
+      - factory/lease.py
+      - tests/test_lease.py
       - tests/test_daily_production.py
       - production.py
       - factory/buffer_api.py
@@ -43,6 +45,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_*production.py' -v
           python -m unittest discover -s tests -p 'test_actor_scenes.py' -v
+          python -m unittest discover -s tests -p 'test_lease.py' -v
       - name: Preview production plan
         run: python production.py
       - name: Install video tools
