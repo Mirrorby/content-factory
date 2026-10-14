@@ -291,11 +291,16 @@ def main():
     load_private_channels(ledger, characters)
     validate_live(config, characters)
     from factory.buffer_api import Buffer
-    ledger.store.put('lock.json', json.dumps({'run_id': os.environ.get('GITHUB_RUN_ID')}).encode(),
-                     IfNoneMatch='*')
+    from factory.lease import Lease
+    lease = Lease(ledger.store, 'production', 21600)
+    if not lease.acquire():
+        print('Production postponed: another unexpired lease is held. No generation started.')
+        return
     try:
         all_state = ledger.read()
-        save = lambda: ledger.save(all_state)
+        def save():
+            lease.assert_owned()
+            ledger.save(all_state)
         failures = []
         for character in characters:
             try:
@@ -325,7 +330,7 @@ def main():
         if failures:
             raise RuntimeError('Characters requiring inspection: ' + ', '.join(failures))
     finally:
-        ledger.store.client.delete_object(Bucket=ledger.store.bucket, Key=ledger.store.prefix+'lock.json')
+        lease.release()
 
 
 if __name__ == '__main__':
