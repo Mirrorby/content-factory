@@ -9,6 +9,77 @@ const stamp = () => new Date().toISOString();
 const read = async (bucket, key) => { const o = await bucket.get(key); return o ? o.json() : null; };
 const write = (bucket, key, value) => bucket.put(key, JSON.stringify(value));
 
+export async function acquireLease(bucket) {
+  for (let attempt=0; attempt<3; attempt++) {
+    const old=await bucket.get(LOCK);
+    if (old) {
+      const value=await old.json();
+      const expires=value.expires_at ?? old.uploaded.getTime()/1000+(value.worker?180:21600);
+      if (!Number.isFinite(expires) || expires>Date.now()/1000) return null;
+    }
+    const value={owner:crypto.randomUUID(),kind:'worker',created_at:Date.now()/1000,expires_at:Date.now()/1000+180};
+    const result=await bucket.put(LOCK,JSON.stringify(value),{onlyIf:old?{etagMatches:old.etag}:{etagDoesNotMatch:'*'}});
+    if (result) return {value,etag:result.etag};
+  }
+  return null;
+}
+export async function renewLease(bucket,lease) {
+  if (lease.value.expires_at<=Date.now()/1000) throw new Error('Lease expired');
+  const value={...lease.value,expires_at:Date.now()/1000+180};
+  const result=await bucket.put(LOCK,JSON.stringify(value),{onlyIf:{etagMatches:lease.etag}});
+  if (!result) throw new Error('Lease lost');
+  Object.assign(lease,{value,etag:result.etag});
+}
+export async function releaseLease(bucket,lease) {
+  // CAS tombstone: never unconditionally delete another owner's lease.
+  await bucket.put(LOCK,JSON.stringify({...lease.value,expires_at:0,released:true}),{onlyIf:{etagMatches:lease.etag}});
+}
+
+export async function cleanupVideo(env,job,save) {
+  if (job.media_deleted_at || job.status!=='ready' || job.review?.decision!=='approved') return false;
+  if (PLATFORMS.some(p=>job.deliveries[p]?.status!=='sent' || !job.deliveries[p].post_id ||
+      !Number.isFinite(Date.parse(job.deliveries[p].sent_at)))) return false;
+  const latest=Math.max(...PLATFORMS.map(p=>Date.parse(job.deliveries[p].sent_at)));
+  if (latest>Date.now() || Date.now()<latest+3*86400000) return false;
+  if (!/^daily-[a-z][a-z0-9-]*-\d{8}-[A-Za-z0-9-]+$/.test(job.id) ||
+      job.video_key!=='content-factory/v1/'+job.id+'/final.mp4' ||
+      (job.public_key && !/^videos\/[a-f0-9]{32}\.mp4$/.test(job.public_key))) throw new Error('Cleanup key validation failed');
+  job.cleanup_started_at ??= stamp(); await save();
+  if (job.public_key) await env.PUBLIC.delete(job.public_key);
+  const prefix='content-factory/v1/'+job.id+'/';
+  await env.PRIVATE.delete(['final.mp4','intro.mp4','outro.mp4'].map(name=>prefix+name));
+  job.media_deleted_at=stamp(); job.cleanup_after=new Date(latest+3*86400000).toISOString(); await save();
+  return true;
+}
+
+export async function maintainPublication(env,c,character,save) {
+  // One job per hour: at most 72 status requests/day, independent of ledger size.
+  if (Date.parse(character.next_publication_check_at || '1970-01-01')>Date.now()) return;
+  character.next_publication_check_at=new Date(Date.now()+3600000).toISOString(); await save();
+  const job=character.jobs.find(j=>j.status==='ready' && !j.media_deleted_at && j.review?.decision==='approved' &&
+    PLATFORMS.every(p=>['scheduled','sent'].includes(j.deliveries[p]?.status) && j.deliveries[p].post_id) &&
+    PLATFORMS.some(p=>j.deliveries[p].status!=='sent' || !j.deliveries[p].sent_at) &&
+    PLATFORMS.every(p=>Date.parse(j.deliveries[p].due_at || j.deliveries[p].target_due_at)<=Date.now()) &&
+    Date.parse(j.next_publication_check_at || '1970-01-01')<=Date.now());
+  if (!job) return;
+  job.next_publication_check_at=new Date(Date.now()+86400000).toISOString(); await save();
+  try {
+    for (const p of PLATFORMS) {
+      const d=job.deliveries[p]; if(d.status==='sent' && d.sent_at) continue;
+      const data=await graph(c,`query($input: PostInput!) { post(input:$input) { id status channelId sentAt } }`,{input:{id:d.post_id}});
+      const post=data.post;
+      if (!post || post.id!==d.post_id || post.channelId!==c.channels[p]) throw new Error('Publication receipt mismatch');
+      if (post.status==='sent') {
+        const sent=Date.parse(post.sentAt);
+        if (!Number.isFinite(sent) || sent>Date.now()) throw new Error('Publication timestamp missing');
+        Object.assign(d,{status:'sent',sent_at:new Date(sent).toISOString(),confirmed_at:stamp()}); await save();
+      }
+    }
+    delete job.publication_error;
+  } catch { job.publication_error='PublicationCheckFailed'; }
+  await save();
+}
+
 export function authorize(q, config, state, receipt) {
   const match = /^cf:([ar]):([A-Za-z0-9][A-Za-z0-9_-]{0,54})$/.exec(q?.data || '');
   const m = q?.message;
@@ -132,22 +203,28 @@ export async function deliver(env, c, job, save) {
 
 export async function drain(env) {
   const c = JSON.parse(env.CONFIG);
-  const locked = await env.PRIVATE.put(LOCK,JSON.stringify({worker:true}),{onlyIf:{etagDoesNotMatch:'*'}});
-  if (!locked) return;
+  const lease = await acquireLease(env.PRIVATE);
+  if (!lease) return;
   try {
     const state = await read(env.PRIVATE,LEDGER); if (!state) return;
     const character = state.characters.maya; if (!character) return;
-    const save = () => write(env.PRIVATE,LEDGER,state);
+    const save = async () => {await renewLease(env.PRIVATE,lease); await write(env.PRIVATE,LEDGER,state);};
     if (JSON.stringify(Object.entries(character.channels).sort()) !== JSON.stringify(Object.entries(c.channels).sort())) throw new Error('Channel mapping changed');
     let checkedChannels = false;
+    let attemptedDelivery=false;
+    const started=Date.now();
     for (const job of character.jobs) {
-      const decision = await read(env.PRIVATE,DECISIONS+job.id+'.json');
+      if (Date.now()-started>20000) break;
+      // Closed jobs no longer consume a decision-object read every minute.
+      const decision = !job.review?.decision && ['ready','rejected'].includes(job.status)
+        ? await read(env.PRIVATE,DECISIONS+job.id+'.json') : null;
       if (decision && decide(job,decision)) await save();
       if (!job.review?.decision) continue;
-      if (job.review.decision === 'approved' && Object.values(job.deliveries).some(d=>d.status === 'waiting') &&
+      if (!attemptedDelivery && job.review.decision === 'approved' && Object.values(job.deliveries).some(d=>d.status === 'waiting') &&
           !Object.values(job.deliveries).some(d=>['unknown','error'].includes(d.status)) &&
           (job.review.delivery_error === 'WorkerDeliveryError' && job.review.delivery_diagnostics_version !== 3 || Date.parse(job.review.next_delivery_check_at || '1970-01-01') <= Date.now())) {
         job.review.delivery_diagnostics_version=3;
+        attemptedDelivery=true;
         job.review.next_delivery_check_at = new Date(Date.now()+6*3600000).toISOString(); await save();
         try { if (!checkedChannels) { await preflight(c); checkedChannels=true; } await deliver(env,c,job,save); delete job.review.delivery_error; }
         catch (e) { job.review.delivery_diagnostic={name:e.name,message:String(e.message).replaceAll(c.token,'[secret]').replaceAll(c.buffer_key,'[secret]').replace(/https?:\/\/[^\s]+/g,'[url]').slice(0,300)}; job.review.delivery_error=/^(ProviderHTTP_\d+|Buffer GraphQL failure|Channel validation failed|Public video unavailable|Video unavailable)$/.test(e.message) ? e.message : 'WorkerDeliveryError'; }
@@ -157,8 +234,10 @@ export async function drain(env) {
       if (job.review.displayed_label !== text) {
         try { await keyboard(c,job,text); job.review.displayed_label=text; await save(); } catch (e) { job.review.label_error=/^TelegramAPI_\d+$/.test(e.message)?e.message:'LabelUpdateError'; await save(); }
       }
+      await cleanupVideo(env,job,save);
     }
-  } finally { await env.PRIVATE.delete(LOCK); }
+    if (!attemptedDelivery && Date.now()-started<10000) await maintainPublication(env,c,character,save);
+  } finally { await releaseLease(env.PRIVATE,lease); }
 }
 
 export default {
