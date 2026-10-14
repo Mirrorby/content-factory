@@ -109,16 +109,16 @@ def main():
     owned = read_json(store, store.prefix+'telegram-webhook.json') or {}
     if webhook and webhook != owned.get('url'):
         raise RuntimeError('Bot has another active webhook; polling was not started.')
-    try:
-        store.put('lock.json', b'{}', IfNoneMatch='*')
-    except ClientError as exc:
-        if exc.response['Error']['Code'] in ('PreconditionFailed','412'):
-            print('Review postponed: production lock is held.')
-            return
-        raise
+    from factory.lease import Lease
+    lease = Lease(store, 'review', 600)
+    if not lease.acquire():
+        print('Review postponed: another unexpired lease is held.')
+        return
     try:
         state = ledger.read()
-        save = lambda: ledger.save(state)
+        def save():
+            lease.assert_owned()
+            ledger.save(state)
         cursor = read_json(store, store.prefix+'telegram-updates.json') or {'offset':0}
         updates = [] if webhook else tg.call('getUpdates', offset=cursor['offset'], timeout=0,
                           allowed_updates=['callback_query'], limit=100)
@@ -196,7 +196,7 @@ def main():
                         print('Review label update postponed.')
         print('Review check completed. No video generation performed.')
     finally:
-        store.client.delete_object(Bucket=store.bucket, Key=store.prefix+'lock.json')
+        lease.release()
 
 
 if __name__ == '__main__':
