@@ -7,6 +7,7 @@ from production import (Ledger, PLATFORMS, load_private_channels, validate_live,
                         select_phrase, render, send_for_review, now)
 from factory.buffer_api import Buffer
 from factory.actor_scenes import select_scene
+from factory.lease import Lease
 
 
 def tomorrow(current, config):
@@ -120,10 +121,15 @@ def execute(config, phrases):
     ledger = Ledger()
     load_private_channels(ledger, characters)
     validate_live(config, characters)
-    ledger.store.put('lock.json', json.dumps({'run_id': os.environ.get('GITHUB_RUN_ID')}).encode(), IfNoneMatch='*')
+    lease = Lease(ledger.store, 'production', 21600)
+    if not lease.acquire():
+        print('Production postponed: another unexpired lease is held. No generation started.')
+        return
     try:
         all_state = ledger.read()
-        save = lambda: ledger.save(all_state)
+        def save():
+            lease.assert_owned()
+            ledger.save(all_state)
         for character in characters:
             check_assets(ledger, config, character)  # before any paid generation
             api = Buffer(os.environ[character['buffer_secret']], character['organization_id'])
@@ -161,4 +167,4 @@ def execute(config, phrases):
                 raise RuntimeError('Daily generation incomplete; saved failed jobs were not replaced or retried.')
             print('Daily pair delivered for Telegram review. Buffer requires approval.', flush=True)
     finally:
-        ledger.store.client.delete_object(Bucket=ledger.store.bucket, Key=ledger.store.prefix+'lock.json')
+        lease.release()
