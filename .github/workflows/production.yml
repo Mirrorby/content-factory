@@ -30,6 +30,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   production:
+    # Project paused by owner on 2026-10-22. Blocks cron dispatches and manual runs.
+    if: ${{ false }}
     runs-on: ubuntu-24.04
     timeout-minutes: 350
     env:
